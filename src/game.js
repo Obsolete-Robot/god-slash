@@ -8,17 +8,19 @@
 // =============================================================================
 
 const CONFIG = {
-    // Canvas (internal resolution - pixel art scale) - DOUBLED for new sprites
+    // Canvas (internal resolution - pixel art scale)
     WIDTH: 768,
     HEIGHT: 432,
     
-    // Physics (doubled for new scale)
+    // Physics - Core
     GRAVITY: 0.76,
+    MAX_FALL_SPEED: 12,
     FRICTION: 0.85,
     
-    // Player (doubled for new scale)
+    // Player - Movement
     PLAYER_SPEED: 4.4,
     PLAYER_JUMP: -16,
+    PLAYER_DOUBLE_JUMP_MULT: 0.85,
     PLAYER_WALL_SLIDE: 3,
     PLAYER_WALL_JUMP_X: 10,
     PLAYER_WALL_JUMP_Y: -14,
@@ -27,45 +29,63 @@ const CONFIG = {
     PLAYER_DASH_COOLDOWN: 30,
     PLAYER_FAST_FALL: 16,
     
-    // Combat (doubled for new scale)
-    SLASH_WIDTH: 60,  // Slash hitbox width (longer dimension)
-    SLASH_HEIGHT: 24, // Slash hitbox height (shorter dimension)
+    // Combat - Slash
+    SLASH_WIDTH: 60,
+    SLASH_HEIGHT: 24,
     SWORD_DURATION: 8,
     SWORD_COOLDOWN: 15,
-    SURFACE_DEFLECT_SPEED: 16, // Knockback from slashing surfaces
+    
+    // Combat - Knockback
+    SURFACE_DEFLECT_SPEED: 16,
     HIT_STUN_DURATION: 20,
     HIT_STUN_KNOCKBACK: 16,
     CLASH_KNOCKBACK: 20,
+    GROUND_SLASH_BOUNCE: -8,
+    WALL_SLASH_DELAY: 3,
     
-    // Gun (DISABLED for now)
-    GUN_ENABLED: false,
-    BULLET_SPEED: 10,
-    BULLET_COUNT: 3,
-    GUN_COOLDOWN: 20,
+    // Combat - Hit Stop
+    HIT_STOP_DURATION: 18,
+    CLASH_HIT_STOP_DURATION: 9,
+    
+    // Character Collision
+    BOP_BOUNCE_UP: -10,
+    BOP_PUSH_DOWN: 6,
+    PUSH_FORCE: 2,
     
     // AI
     AI_REACTION_TIME: 15,
     AI_AGGRESSION: 0.5,
     AI_WANDER_CHANCE: 0.3,
     AI_IDLE_TIME: 60,
+    AI_WANDER_SPEED_MULT: 0.6,
+    AI_WHIFF_CHANCE: 0.015,
+    AI_JUMP_CHANCE: 0.03,
     
     // Game
     LIVES_PER_CHARACTER: 5,
     RESPAWN_TIME: 60,
-    
-    // Physics
-    BOP_BOUNCE_UP: -10,      // Bounce up when landing on enemy
-    BOP_PUSH_DOWN: 6,        // Push down the character below
-    GROUND_SLASH_BOUNCE: -8, // Upward bounce from slashing ground
-    WALL_SLASH_DELAY: 3,     // Frames before movement can counter wall bounce (0.05s at 60fps)
-    
-    // Hit Stop
-    HIT_STOP_DURATION: 18, // ~0.3 seconds at 60fps
-    CLASH_HIT_STOP_DURATION: 9, // ~0.15 seconds at 60fps
-    
-    // Multi-enemy
     ENEMY_COUNT: 3,
+    
+    // Gun (DISABLED)
+    GUN_ENABLED: false,
+    BULLET_SPEED: 10,
+    BULLET_COUNT: 3,
+    GUN_COOLDOWN: 20,
 };
+
+// Tunable settings (subset of CONFIG that can be adjusted in debug panel)
+const TUNABLE_KEYS = [
+    'GRAVITY', 'MAX_FALL_SPEED', 'FRICTION',
+    'PLAYER_SPEED', 'PLAYER_JUMP', 'PLAYER_DOUBLE_JUMP_MULT',
+    'PLAYER_WALL_SLIDE', 'PLAYER_WALL_JUMP_X', 'PLAYER_WALL_JUMP_Y',
+    'PLAYER_DASH_SPEED', 'PLAYER_DASH_DURATION', 'PLAYER_DASH_COOLDOWN', 'PLAYER_FAST_FALL',
+    'SLASH_WIDTH', 'SLASH_HEIGHT', 'SWORD_DURATION', 'SWORD_COOLDOWN',
+    'SURFACE_DEFLECT_SPEED', 'HIT_STUN_DURATION', 'HIT_STUN_KNOCKBACK', 'CLASH_KNOCKBACK',
+    'GROUND_SLASH_BOUNCE', 'WALL_SLASH_DELAY', 'HIT_STOP_DURATION', 'CLASH_HIT_STOP_DURATION',
+    'BOP_BOUNCE_UP', 'BOP_PUSH_DOWN', 'PUSH_FORCE',
+    'AI_REACTION_TIME', 'AI_AGGRESSION', 'AI_WANDER_CHANCE', 'AI_IDLE_TIME',
+    'LIVES_PER_CHARACTER', 'RESPAWN_TIME', 'ENEMY_COUNT',
+];
 
 // =============================================================================
 // COLORS (Pixel art palette)
@@ -550,10 +570,106 @@ window.addEventListener('keydown', e => {
     // Toggle debug mode with D
     if (e.code === 'KeyD' && !e.repeat) {
         state.debugMode = !state.debugMode;
+        toggleDebugPanel(state.debugMode);
         console.log('Debug mode:', state.debugMode);
     }
 });
 window.addEventListener('keyup', e => keys[e.code] = false);
+
+// =============================================================================
+// DEBUG PANEL
+// =============================================================================
+
+function toggleDebugPanel(show) {
+    const panel = document.getElementById('debug-panel');
+    if (!panel) return;
+    
+    if (show) {
+        panel.classList.remove('hidden');
+        buildDebugPanel();
+    } else {
+        panel.classList.add('hidden');
+    }
+}
+
+function buildDebugPanel() {
+    const content = document.getElementById('debug-content');
+    if (!content) return;
+    
+    // Group settings by category
+    const categories = {
+        'Physics': ['GRAVITY', 'MAX_FALL_SPEED', 'FRICTION'],
+        'Movement': ['PLAYER_SPEED', 'PLAYER_JUMP', 'PLAYER_DOUBLE_JUMP_MULT', 'PLAYER_WALL_SLIDE', 'PLAYER_WALL_JUMP_X', 'PLAYER_WALL_JUMP_Y', 'PLAYER_DASH_SPEED', 'PLAYER_DASH_DURATION', 'PLAYER_DASH_COOLDOWN', 'PLAYER_FAST_FALL'],
+        'Combat': ['SLASH_WIDTH', 'SLASH_HEIGHT', 'SWORD_DURATION', 'SWORD_COOLDOWN', 'SURFACE_DEFLECT_SPEED', 'HIT_STUN_DURATION', 'HIT_STUN_KNOCKBACK', 'CLASH_KNOCKBACK', 'GROUND_SLASH_BOUNCE', 'WALL_SLASH_DELAY'],
+        'Hit Stop': ['HIT_STOP_DURATION', 'CLASH_HIT_STOP_DURATION'],
+        'Collision': ['BOP_BOUNCE_UP', 'BOP_PUSH_DOWN', 'PUSH_FORCE'],
+        'AI': ['AI_REACTION_TIME', 'AI_AGGRESSION', 'AI_WANDER_CHANCE', 'AI_IDLE_TIME'],
+        'Game': ['LIVES_PER_CHARACTER', 'RESPAWN_TIME', 'ENEMY_COUNT'],
+    };
+    
+    let html = '';
+    
+    for (const [category, keys] of Object.entries(categories)) {
+        html += `<div class="debug-section"><div class="debug-section-title">${category}</div>`;
+        for (const key of keys) {
+            const value = CONFIG[key];
+            const step = Number.isInteger(value) ? 1 : 0.01;
+            html += `
+                <div class="debug-row">
+                    <label>${key}</label>
+                    <input type="number" id="cfg-${key}" value="${value}" step="${step}" data-key="${key}">
+                </div>
+            `;
+        }
+        html += '</div>';
+    }
+    
+    content.innerHTML = html;
+    
+    // Add event listeners
+    content.querySelectorAll('input').forEach(input => {
+        input.addEventListener('change', (e) => {
+            const key = e.target.dataset.key;
+            const value = parseFloat(e.target.value);
+            if (!isNaN(value)) {
+                CONFIG[key] = value;
+                console.log(`CONFIG.${key} = ${value}`);
+            }
+        });
+    });
+}
+
+function copySettingsToClipboard() {
+    const settings = {};
+    TUNABLE_KEYS.forEach(key => {
+        settings[key] = CONFIG[key];
+    });
+    
+    const text = JSON.stringify(settings, null, 2);
+    navigator.clipboard.writeText(text).then(() => {
+        const btn = document.getElementById('copy-settings-btn');
+        const original = btn.textContent;
+        btn.textContent = '✓ Copied!';
+        setTimeout(() => btn.textContent = original, 1500);
+    }).catch(err => {
+        console.error('Copy failed:', err);
+    });
+}
+
+function setupDebugPanel() {
+    const copyBtn = document.getElementById('copy-settings-btn');
+    const closeBtn = document.getElementById('close-debug-btn');
+    
+    if (copyBtn) {
+        copyBtn.addEventListener('click', copySettingsToClipboard);
+    }
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+            state.debugMode = false;
+            toggleDebugPanel(false);
+        });
+    }
+}
 
 function clearJustPressed() {
     for (const k in keysJustPressed) delete keysJustPressed[k];
@@ -814,7 +930,7 @@ class Player {
                 this.wallSliding = false;
                 this.facing = -this.wallDir;
             } else if (this.canDoubleJump) {
-                this.vy = CONFIG.PLAYER_JUMP * 0.85;
+                this.vy = CONFIG.PLAYER_JUMP * CONFIG.PLAYER_DOUBLE_JUMP_MULT;
                 this.canDoubleJump = false;
             }
         }
@@ -1254,6 +1370,10 @@ class Player {
             } else {
                 this.vy += CONFIG.GRAVITY;
             }
+            // Cap fall speed
+            if (this.vy > CONFIG.MAX_FALL_SPEED) {
+                this.vy = CONFIG.MAX_FALL_SPEED;
+            }
         }
         
         // Apply velocity
@@ -1291,15 +1411,14 @@ class Player {
                     }
                 } else {
                     // Horizontal collision - push apart
-                    const pushForce = 2;
                     if (this.x < other.x) {
                         this.x = other.x - this.w;
-                        this.vx = -pushForce;
-                        other.vx = pushForce;
+                        this.vx = -CONFIG.PUSH_FORCE;
+                        other.vx = CONFIG.PUSH_FORCE;
                     } else {
                         this.x = other.x + other.w;
-                        this.vx = pushForce;
-                        other.vx = -pushForce;
+                        this.vx = CONFIG.PUSH_FORCE;
+                        other.vx = -CONFIG.PUSH_FORCE;
                     }
                 }
             }
@@ -1800,6 +1919,9 @@ function init() {
     
     // Setup audio controls
     setupAudioControls();
+    
+    // Setup debug panel
+    setupDebugPanel();
     
     // Create first stage (random)
     createStage();

@@ -197,3 +197,98 @@ canvas {
     border: none;
     box-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
 }
+
+/* Debug Panel */
+#debug-panel {
+    position: fixed;
+    top: 50px;
+    right: 20px;
+    width: 320px;
+    max-height: 80vh;
+    background: rgba(0, 0, 0, 0.9);
+    border: 2px solid #4af;
+    border-radius: 8px;
+    z-index: 1000;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    color: #fff;
+    overflow: hidden;
+}
+
+#debug-panel.hidden {
+    display: none;
+}
+
+#debug-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: #4af;
+    color: #000;
+    font-size: 10px;
+}
+
+#debug-header button {
+    background: #000;
+    color: #fff;
+    border: none;
+    padding: 4px 8px;
+    font-family: inherit;
+    font-size: 8px;
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+#debug-header button:hover {
+    background: #333;
+}
+
+#debug-content {
+    padding: 10px;
+    max-height: calc(80vh - 40px);
+    overflow-y: auto;
+}
+
+.debug-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    gap: 8px;
+}
+
+.debug-row label {
+    flex: 1;
+    font-size: 7px;
+    color: #aaa;
+}
+
+.debug-row input {
+    width: 70px;
+    padding: 4px;
+    background: #222;
+    border: 1px solid #444;
+    color: #fff;
+    font-family: inherit;
+    font-size: 8px;
+    text-align: right;
+    border-radius: 3px;
+}
+
+.debug-row input:focus {
+    border-color: #4af;
+    outline: none;
+}
+
+.debug-section {
+    border-top: 1px solid #333;
+    padding-top: 8px;
+    margin-top: 8px;
+}
+
+.debug-section-title {
+    color: #4af;
+    font-size: 8px;
+    margin-bottom: 8px;
+}
