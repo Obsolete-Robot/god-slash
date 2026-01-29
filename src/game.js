@@ -90,55 +90,76 @@ const COLORS = {
 
 const ASSETS = {
     loaded: false,
-    bgVideos: [],
-    currentBgVideo: null,
+    bgVideos: {},      // Map of level index to video element
+    activeBgIndex: 0,  // Which video to draw
     tiles: null,
     player: null,
     enemies: [],
 };
 
-// Background videos for each level
-const BG_VIDEOS = [
-    'assets/bg-video.mp4',   // Level 0: Dojo
-    'assets/bg-video-2.mp4', // Level 1: Tower
-    'assets/bg-video-3.mp4', // Level 2: Pit
-    'assets/bg-video.mp4',   // Level 3: Scattered (reuse Dojo for now)
-];
-
-function createVideoElement(src) {
-    const video = document.createElement('video');
-    video.src = src;
-    video.loop = true;
-    video.muted = true;
-    video.playsInline = true;
-    video.preload = 'auto';
-    return video;
-}
+// Background video sources - unique videos only
+const BG_VIDEO_SOURCES = {
+    0: 'assets/bg-video.mp4',   // Dojo
+    1: 'assets/bg-video-2.mp4', // Tower  
+    2: 'assets/bg-video-3.mp4', // Pit
+    3: 'assets/bg-video.mp4',   // Scattered (same as Dojo)
+};
 
 function loadAssets() {
     let loadCount = 0;
-    const totalAssets = 4 + BG_VIDEOS.length; // videos, tiles, player, 3 enemies
+    const uniqueVideos = [...new Set(Object.values(BG_VIDEO_SOURCES))];
+    const totalAssets = 4 + uniqueVideos.length; // unique videos + tiles + player + 3 enemies
     
     function onLoad() {
         loadCount++;
         if (loadCount >= totalAssets) {
             ASSETS.loaded = true;
             console.log('All assets loaded!');
-            // Now that videos are loaded, switch to the correct one
-            if (state.pendingBgVideoIndex !== undefined) {
-                switchBackgroundVideo(state.pendingBgVideoIndex);
-            }
+            // Start all videos playing (they loop silently)
+            Object.values(ASSETS.bgVideos).forEach(v => {
+                v.play().catch(() => {});
+            });
         }
     }
     
-    // Load all background videos
-    BG_VIDEOS.forEach((src, idx) => {
-        const video = createVideoElement(src);
-        video.oncanplaythrough = () => {
-            onLoad();
-        };
-        video.onerror = onLoad;
-        ASSETS.bgVideos.push(video);
+    // Create video elements for each unique source
+    const videoCache = {}; // Cache to reuse same video for duplicate sources
+    
+    Object.entries(BG_VIDEO_SOURCES).forEach(([levelIdx, src]) => {
+        if (videoCache[src]) {
+            // Reuse existing video element for same source
+            ASSETS.bgVideos[levelIdx] = videoCache[src];
+        } else {
+            // Create new video element
+            const video = document.createElement('video');
+            video.src = src;
+            video.loop = true;
+            video.muted = true;
+            video.playsInline = true;
+            video.preload = 'auto';
+            video.autoplay = true;
+            
+            // Load handler
+            video.addEventListener('canplaythrough', () => {
+                if (!video._loaded) {
+                    video._loaded = true;
+                    onLoad();
+                }
+            }, { once: false });
+            
+            video.addEventListener('error', () => {
+                if (!video._loaded) {
+                    video._loaded = true;
+                    onLoad();
+                }
+            }, { once: true });
+            
+            // Start loading
+            video.load();
+            
+            videoCache[src] = video;
+            ASSETS.bgVideos[levelIdx] = video;
+        }
     });
     
     ASSETS.tiles = new Image();
@@ -162,27 +183,8 @@ function loadAssets() {
     }
 }
 
-function switchBackgroundVideo(levelIndex) {
-    // Store pending level in case videos aren't loaded yet
-    state.pendingBgVideoIndex = levelIndex;
-    
-    // Check if videos are loaded
-    if (!ASSETS.bgVideos.length || !ASSETS.bgVideos[levelIndex % ASSETS.bgVideos.length]) {
-        return; // Will be called again when videos load
-    }
-    
-    // Pause ALL videos first
-    ASSETS.bgVideos.forEach(v => {
-        if (v) v.pause();
-    });
-    
-    // Switch to new video
-    const newVideo = ASSETS.bgVideos[levelIndex % ASSETS.bgVideos.length];
-    if (newVideo) {
-        newVideo.currentTime = 0;
-        newVideo.play().catch(() => {});
-        ASSETS.currentBgVideo = newVideo;
-    }
+function setBackgroundForLevel(levelIndex) {
+    ASSETS.activeBgIndex = levelIndex;
 }
 
 // =============================================================================
@@ -569,7 +571,6 @@ const state = {
     platforms: [],
     currentLevel: '',
     currentLevelIndex: 0,
-    pendingBgVideoIndex: undefined,
     screenShake: 0,
     round: 1,
     paused: false,
@@ -657,8 +658,8 @@ function createStage(levelIndex) {
     state.currentLevelIndex = idx;
     state.platforms = level.platforms(W, H);
     
-    // Switch background video
-    switchBackgroundVideo(idx);
+    // Set background video for this level
+    setBackgroundForLevel(idx);
 }
 
 // =============================================================================
@@ -1879,19 +1880,17 @@ function draw() {
         );
     }
     
-    // Draw background video
-    const video = ASSETS.currentBgVideo;
-    if (ASSETS.loaded && video && video.readyState >= 2) {
-        // Ensure video is playing
-        if (video.paused) {
-            video.play().catch(() => {});
-        }
+    // Draw background video for current level
+    const video = ASSETS.bgVideos[ASSETS.activeBgIndex];
+    if (video && video.readyState >= 2) {
+        // Keep video playing
+        if (video.paused) video.play().catch(() => {});
         ctx.drawImage(video, 0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
         // Darken slightly for contrast
         ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
         ctx.fillRect(0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
     } else {
-        // Fallback solid color
+        // Fallback solid color while loading
         ctx.fillStyle = COLORS.bg;
         ctx.fillRect(0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
     }
