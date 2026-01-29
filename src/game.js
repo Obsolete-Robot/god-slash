@@ -221,10 +221,18 @@ function setBackgroundForLevel(levelIndex) {
 const AUDIO = {
     ctx: null,
     initialized: false,
-    music: null,
-    musicGain: null,
+    musicTracks: {},  // Music per level
+    currentMusic: null,
     muted: false,
     volume: 0.5,
+};
+
+// Music tracks per level
+const MUSIC_SOURCES = {
+    0: 'assets/music-bg.mp3',        // Dojo - Shadow of the Pixel Blade
+    1: 'assets/music-tower.mp3',     // Tower - Shadow Edge Oath
+    2: 'assets/music-pit.mp3',       // Pit - Shadow Beast
+    3: 'assets/music-scattered.mp3', // Scattered - Shadow Steel Showdown
 };
 
 function initAudio() {
@@ -232,27 +240,45 @@ function initAudio() {
     AUDIO.ctx = new (window.AudioContext || window.webkitAudioContext)();
     AUDIO.initialized = true;
     
-    // Start background music
-    startBackgroundMusic();
+    // Load all music tracks
+    loadMusicTracks();
+    
+    // Start music for current level
+    switchMusicForLevel(state.currentLevelIndex);
 }
 
-function startBackgroundMusic() {
-    if (AUDIO.music) return; // Already playing
-    
-    AUDIO.music = new Audio('assets/music-bg.mp3');
-    AUDIO.music.loop = true;
-    AUDIO.music.volume = AUDIO.muted ? 0 : AUDIO.volume;
-    
-    // Play (may be blocked by autoplay policy, but we init on keypress so should be fine)
-    AUDIO.music.play().catch(e => {
-        console.log('Music autoplay blocked, will start on interaction');
+function loadMusicTracks() {
+    // Preload all music tracks
+    Object.entries(MUSIC_SOURCES).forEach(([levelIdx, src]) => {
+        const audio = new Audio();
+        audio.src = src;
+        audio.loop = true;
+        audio.preload = 'auto';
+        audio.volume = AUDIO.muted ? 0 : AUDIO.volume;
+        AUDIO.musicTracks[levelIdx] = audio;
     });
+}
+
+function switchMusicForLevel(levelIndex) {
+    const newTrack = AUDIO.musicTracks[levelIndex];
+    if (!newTrack) return;
+    
+    // Stop current music
+    if (AUDIO.currentMusic && AUDIO.currentMusic !== newTrack) {
+        AUDIO.currentMusic.pause();
+        AUDIO.currentMusic.currentTime = 0;
+    }
+    
+    // Start new track
+    newTrack.volume = AUDIO.muted ? 0 : AUDIO.volume;
+    newTrack.play().catch(() => {});
+    AUDIO.currentMusic = newTrack;
 }
 
 function setMusicVolume(vol) {
     AUDIO.volume = Math.max(0, Math.min(1, vol));
-    if (AUDIO.music && !AUDIO.muted) {
-        AUDIO.music.volume = AUDIO.volume;
+    if (AUDIO.currentMusic && !AUDIO.muted) {
+        AUDIO.currentMusic.volume = AUDIO.volume;
     }
     // Update slider
     document.getElementById('volume-slider').value = AUDIO.volume * 100;
@@ -260,8 +286,8 @@ function setMusicVolume(vol) {
 
 function toggleMute() {
     AUDIO.muted = !AUDIO.muted;
-    if (AUDIO.music) {
-        AUDIO.music.volume = AUDIO.muted ? 0 : AUDIO.volume;
+    if (AUDIO.currentMusic) {
+        AUDIO.currentMusic.volume = AUDIO.muted ? 0 : AUDIO.volume;
     }
     // Update button
     document.getElementById('mute-btn').textContent = AUDIO.muted ? '🔇' : '🔊';
@@ -801,6 +827,11 @@ function createStage(levelIndex) {
     
     // Set background video for this level
     setBackgroundForLevel(idx);
+    
+    // Switch music for this level
+    if (AUDIO.initialized) {
+        switchMusicForLevel(idx);
+    }
 }
 
 // =============================================================================
