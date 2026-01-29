@@ -50,8 +50,14 @@ const CONFIG = {
     AI_IDLE_TIME: 60,
     
     // Game
-    KILLS_TO_WIN: 5,
+    LIVES_PER_CHARACTER: 5,
     RESPAWN_TIME: 60,
+    
+    // Physics
+    BOP_BOUNCE_UP: -10,      // Bounce up when landing on enemy
+    BOP_PUSH_DOWN: 6,        // Push down the character below
+    GROUND_SLASH_BOUNCE: -8, // Upward bounce from slashing ground
+    WALL_SLASH_DELAY: 3,     // Frames before movement can counter wall bounce (0.05s at 60fps)
     
     // Hit Stop
     HIT_STOP_DURATION: 18, // ~0.3 seconds at 60fps
@@ -511,7 +517,6 @@ const state = {
     slashEffects: [],
     platforms: [],
     screenShake: 0,
-    roundKills: [0, 0],
     round: 1,
     paused: false,
     message: '',
@@ -593,6 +598,10 @@ class Player {
         // Health
         this.alive = true;
         this.respawnTimer = 0;
+        this.lives = CONFIG.LIVES_PER_CHARACTER;
+        
+        // Movement lock (for wall slash delay)
+        this.movementLockTimer = 0;
         
         // Hit stun
         this.stunned = false;
@@ -620,8 +629,10 @@ class Player {
     
     update() {
         if (!this.alive) {
-            this.respawnTimer--;
-            if (this.respawnTimer <= 0) this.respawn();
+            if (this.respawnTimer > 0) {
+                this.respawnTimer--;
+                if (this.respawnTimer <= 0) this.respawn();
+            }
             return;
         }
         
@@ -640,6 +651,7 @@ class Player {
         if (this.dashCooldown > 0) this.dashCooldown--;
         if (this.slashCooldown > 0) this.slashCooldown--;
         if (this.gunCooldown > 0) this.gunCooldown--;
+        if (this.movementLockTimer > 0) this.movementLockTimer--;
         
         // Handle input
         if (this.isAI) {
@@ -665,13 +677,15 @@ class Player {
     }
     
     handleInput() {
-        // Horizontal movement
-        if (keys['ArrowLeft'] || keys['KeyA']) {
-            this.vx = -CONFIG.PLAYER_SPEED;
-            this.facing = -1;
-        } else if (keys['ArrowRight'] || keys['KeyD']) {
-            this.vx = CONFIG.PLAYER_SPEED;
-            this.facing = 1;
+        // Horizontal movement (blocked during movement lock)
+        if (this.movementLockTimer <= 0) {
+            if (keys['ArrowLeft'] || keys['KeyA']) {
+                this.vx = -CONFIG.PLAYER_SPEED;
+                this.facing = -1;
+            } else if (keys['ArrowRight'] || keys['KeyD']) {
+                this.vx = CONFIG.PLAYER_SPEED;
+                this.facing = 1;
+            }
         }
         
         // Jump (X key)
@@ -730,17 +744,31 @@ class Player {
     }
     
     updateAI() {
-        // AI always targets the human player (index 0)
-        const target = state.players[0];
-        if (!target || !target.alive) {
-            // No target - wander
+        // Find nearest alive target (any other player/enemy)
+        let target = null;
+        let minDist = Infinity;
+        
+        for (const other of state.players) {
+            if (other === this || !other.alive) continue;
+            const d = Math.sqrt((other.x - this.x) ** 2 + (other.y - this.y) ** 2);
+            if (d < minDist) {
+                minDist = d;
+                target = other;
+            }
+        }
+        
+        if (!target) {
+            // No target - wander and occasionally whiff attack
             this.aiWander();
+            if (Math.random() < 0.02 && this.slashCooldown <= 0) {
+                this.aiRandomSlash();
+            }
             return;
         }
         
         const dx = target.x - this.x;
         const dy = target.y - this.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
+        const dist = minDist;
         
         this.aiDecisionTimer--;
         if (this.aiDecisionTimer <= 0) {
@@ -791,21 +819,31 @@ class Player {
                 
             case 'attack':
                 this.facing = dx > 0 ? 1 : -1;
-                if (dist < CONFIG.SWORD_RANGE * 1.2 && this.slashCooldown <= 0) {
-                    // AI picks slash direction toward target
-                    if (Math.abs(dy) > Math.abs(dx) * 1.5) {
-                        // Target is mostly above/below
-                        this.slashDir = { x: 0, y: dy > 0 ? 1 : -1 };
+                if (dist < CONFIG.SLASH_WIDTH * 1.5 && this.slashCooldown <= 0) {
+                    // AI picks slash direction toward target using all 4 directions
+                    const absDx = Math.abs(dx);
+                    const absDy = Math.abs(dy);
+                    
+                    if (absDy > absDx * 1.2 && dy < 0) {
+                        // Target is above
+                        this.slashDir = { x: 0, y: -1 };
+                    } else if (absDy > absDx * 1.2 && dy > 0) {
+                        // Target is below
+                        this.slashDir = { x: 0, y: 1 };
                     } else {
-                        // Target is mostly horizontal
+                        // Target is horizontal
                         this.slashDir = { x: dx > 0 ? 1 : -1, y: 0 };
                     }
                     this.slash();
-                    this.aiAction = 'retreat'; // Back off after attack
+                    this.aiAction = 'retreat';
                     this.aiDecisionTimer = 20;
-                } else if (dist < CONFIG.SWORD_RANGE * 2) {
+                } else if (dist < CONFIG.SLASH_WIDTH * 2.5) {
                     // Close in for attack
                     this.vx = Math.sign(dx) * CONFIG.PLAYER_SPEED;
+                    // Random whiff while approaching
+                    if (Math.random() < 0.03 && this.slashCooldown <= 0) {
+                        this.aiRandomSlash();
+                    }
                 }
                 break;
                 
@@ -842,6 +880,24 @@ class Player {
         else if (this.x > CONFIG.WIDTH - 60) this.aiWanderDir = -1;
         else if (Math.random() < 0.01) this.aiWanderDir *= -1;
         if (this.grounded && Math.random() < 0.02) this.vy = CONFIG.PLAYER_JUMP * 0.7;
+        
+        // Occasional whiff attack while wandering
+        if (Math.random() < 0.015 && this.slashCooldown <= 0) {
+            this.aiRandomSlash();
+        }
+    }
+    
+    aiRandomSlash() {
+        // Pick a random slash direction
+        const dirs = [
+            { x: 1, y: 0 },
+            { x: -1, y: 0 },
+            { x: 0, y: -1 },
+            { x: 0, y: 1 },
+        ];
+        this.slashDir = dirs[Math.floor(Math.random() * dirs.length)];
+        if (this.slashDir.x !== 0) this.facing = this.slashDir.x;
+        this.slash();
     }
     
     makeAIDecision(target, dist) {
@@ -927,15 +983,16 @@ class Player {
                 
                 // Deflect player away from the surface they slashed
                 if (this.slashDir.x !== 0) {
-                    // Horizontal slash - push back horizontally
+                    // Horizontal slash (wall) - push back with movement delay
                     this.vx = -this.slashDir.x * CONFIG.SURFACE_DEFLECT_SPEED;
                     this.vy = -3; // Small upward boost
+                    this.movementLockTimer = CONFIG.WALL_SLASH_DELAY;
                 } else if (this.slashDir.y < 0) {
                     // Upward slash hitting ceiling - push down and away
                     this.vy = CONFIG.SURFACE_DEFLECT_SPEED * 0.7;
                 } else if (this.slashDir.y > 0) {
-                    // Downward slash hitting floor - pogo bounce!
-                    this.vy = -CONFIG.SURFACE_DEFLECT_SPEED;
+                    // Downward slash hitting floor - immediate bounce up
+                    this.vy = CONFIG.GROUND_SLASH_BOUNCE;
                     this.canDoubleJump = true; // Reset double jump on pogo
                 }
                 
@@ -1090,6 +1147,51 @@ class Player {
         this.x += this.vx;
         this.y += this.vy;
         
+        // Character-to-character collision
+        for (const other of state.players) {
+            if (other === this || !other.alive || !this.alive) continue;
+            
+            // Check overlap
+            if (this.x < other.x + other.w &&
+                this.x + this.w > other.x &&
+                this.y < other.y + other.h &&
+                this.y + this.h > other.y) {
+                
+                // Calculate overlap
+                const overlapX = Math.min(this.x + this.w - other.x, other.x + other.w - this.x);
+                const overlapY = Math.min(this.y + this.h - other.y, other.y + other.h - this.y);
+                
+                if (overlapY < overlapX) {
+                    // Vertical collision - check for bop
+                    if (this.y < other.y && this.vy > 0) {
+                        // This character is above and falling - bop bounce!
+                        this.y = other.y - this.h;
+                        this.vy = CONFIG.BOP_BOUNCE_UP;
+                        // Push the bottom character down
+                        if (!other.grounded) {
+                            other.vy = Math.max(other.vy, CONFIG.BOP_PUSH_DOWN);
+                        }
+                    } else if (this.y > other.y) {
+                        // This character is below
+                        this.y = other.y + other.h;
+                        if (this.vy < 0) this.vy = CONFIG.BOP_PUSH_DOWN;
+                    }
+                } else {
+                    // Horizontal collision - push apart
+                    const pushForce = 2;
+                    if (this.x < other.x) {
+                        this.x = other.x - this.w;
+                        this.vx = -pushForce;
+                        other.vx = pushForce;
+                    } else {
+                        this.x = other.x + other.w;
+                        this.vx = pushForce;
+                        other.vx = -pushForce;
+                    }
+                }
+            }
+        }
+        
         // Friction (only when not dashing)
         if (!this.dashing && this.grounded) {
             this.vx *= CONFIG.FRICTION;
@@ -1146,13 +1248,17 @@ class Player {
     
     die() {
         this.alive = false;
-        this.respawnTimer = CONFIG.RESPAWN_TIME;
+        this.lives--;
+        this.respawnTimer = this.lives > 0 ? CONFIG.RESPAWN_TIME : -1; // Don't respawn if no lives
         spawnParticles(this.x + this.w/2, this.y + this.h/2, 20, this.color);
         state.screenShake = 10;
         playDeathSound();
+        updateUI();
+        checkGameOver();
     }
     
     respawn() {
+        if (this.lives <= 0) return; // Stay dead if no lives
         this.alive = true;
         this.x = this.spawnX;
         this.y = this.spawnY;
@@ -1161,6 +1267,8 @@ class Player {
         this.bullets = CONFIG.BULLET_COUNT;
         this.dashing = false;
         this.slashing = false;
+        this.stunned = false;
+        this.movementLockTimer = 0;
         updateUI();
     }
     
@@ -1356,11 +1464,7 @@ function updateBullets() {
             
             if (b.x > player.x && b.x < player.x + player.w &&
                 b.y > player.y && b.y < player.y + player.h) {
-                player.die();
-                const idx = state.players.indexOf(b.owner);
-                state.roundKills[idx]++;
-                updateUI();
-                checkWin();
+                player.die(); // die() handles lives, UI, game over
                 state.bullets.splice(i, 1);
                 break;
             }
@@ -1456,8 +1560,14 @@ function drawDebug(ctx) {
 // =============================================================================
 
 function updateUI() {
-    document.getElementById('p1-kills').textContent = state.roundKills[0];
-    document.getElementById('p2-kills').textContent = state.roundKills[1];
+    // Show player lives
+    const player = state.players[0];
+    document.getElementById('p1-lives').textContent = player ? '❤'.repeat(player.lives) : '';
+    
+    // Show enemy lives (sum of all enemy lives remaining)
+    const enemyLives = state.players.slice(1).reduce((sum, p) => sum + Math.max(0, p.lives), 0);
+    document.getElementById('p2-lives').textContent = '❤'.repeat(enemyLives);
+    
     document.getElementById('round-info').textContent = `ROUND ${state.round}`;
     
     // Bullet UI (only if gun enabled)
@@ -1482,28 +1592,44 @@ function hideMessage() {
     document.getElementById('message').classList.add('hidden');
 }
 
-function checkWin() {
-    for (let i = 0; i < 2; i++) {
-        if (state.roundKills[i] >= CONFIG.KILLS_TO_WIN) {
-            const winner = i === 0 ? 'PLAYER' : 'AI';
-            showMessage(`${winner} WINS!`, 180);
-            setTimeout(() => {
-                state.roundKills = [0, 0];
-                state.round++;
-                resetRound();
-            }, 3000);
-        }
+function checkGameOver() {
+    // Check if player is out of lives
+    const player = state.players[0];
+    if (player.lives <= 0) {
+        showMessage('GAME OVER', 180);
+        setTimeout(() => {
+            state.round++;
+            resetMatch();
+        }, 3000);
+        return;
+    }
+    
+    // Check if all enemies are out of lives
+    const aliveEnemies = state.players.slice(1).filter(p => p.lives > 0);
+    if (aliveEnemies.length === 0) {
+        showMessage('YOU WIN!', 180);
+        setTimeout(() => {
+            state.round++;
+            resetMatch();
+        }, 3000);
     }
 }
 
-function resetRound() {
+function resetMatch() {
+    // Reset all lives and respawn everyone
+    for (const p of state.players) {
+        p.lives = CONFIG.LIVES_PER_CHARACTER;
+        p.alive = true;
+        p.x = p.spawnX;
+        p.y = p.spawnY;
+        p.vx = 0;
+        p.vy = 0;
+    }
     state.bullets = [];
     state.particles = [];
-    for (const p of state.players) {
-        p.respawn();
-    }
     updateUI();
     hideMessage();
+    showMessage('FIGHT!', 60);
 }
 
 // =============================================================================
@@ -1583,16 +1709,8 @@ function update() {
                     p.vx = p.pendingKnockbackX;
                     p.vy = p.pendingKnockbackY;
                     p.pendingDeath = false;
-                    p.die();
-                    
-                    // Credit the kill - player is idx 0, all AI share idx 1
-                    if (p.killer) {
-                        const killerIdx = p.killer.isAI ? 1 : 0;
-                        state.roundKills[killerIdx]++;
-                        p.killer = null;
-                    }
-                    updateUI();
-                    checkWin();
+                    p.killer = null;
+                    p.die(); // die() handles lives, UI, and game over check
                 }
             }
         }
