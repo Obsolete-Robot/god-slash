@@ -549,6 +549,135 @@ function playBumperSound() {
 }
 
 // =============================================================================
+// MATCH INTRO SOUNDS
+// =============================================================================
+
+// Whoosh sound for text slide-in
+function playSlideSound() {
+    if (!AUDIO.ctx) initAudio();
+    const ctx = AUDIO.ctx;
+    const now = ctx.currentTime;
+    
+    // Swoosh noise
+    const bufferSize = ctx.sampleRate * 0.2;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+        const t = i / bufferSize;
+        data[i] = (Math.random() * 2 - 1) * Math.sin(t * Math.PI) * (1 - t * 0.5);
+    }
+    const noise = ctx.createBufferSource();
+    const noiseGain = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(800, now);
+    filter.frequency.exponentialRampToValueAtTime(2000, now + 0.1);
+    filter.frequency.exponentialRampToValueAtTime(400, now + 0.2);
+    filter.Q.value = 2;
+    noise.buffer = buffer;
+    noiseGain.gain.setValueAtTime(0.2, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+    noise.connect(filter).connect(noiseGain).connect(ctx.destination);
+    noise.start(now);
+}
+
+// Letter tick sound for READY text
+function playTickSound() {
+    if (!AUDIO.ctx) initAudio();
+    const ctx = AUDIO.ctx;
+    const now = ctx.currentTime;
+    
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(1800, now);
+    osc.frequency.exponentialRampToValueAtTime(1200, now + 0.03);
+    gain.gain.setValueAtTime(0.15, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.05);
+}
+
+// Countdown beep sound (3, 2, 1)
+function playCountdownSound(num) {
+    if (!AUDIO.ctx) initAudio();
+    const ctx = AUDIO.ctx;
+    const now = ctx.currentTime;
+    
+    // Higher pitch for lower numbers
+    const baseFreq = num === 1 ? 600 : (num === 2 ? 500 : 400);
+    
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(baseFreq, now);
+    osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.8, now + 0.15);
+    gain.gain.setValueAtTime(0.35, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.2);
+    
+    // Add harmonic
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = 'triangle';
+    osc2.frequency.setValueAtTime(baseFreq * 2, now);
+    gain2.gain.setValueAtTime(0.1, now);
+    gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+    osc2.connect(gain2).connect(ctx.destination);
+    osc2.start(now);
+    osc2.stop(now + 0.15);
+}
+
+// FIGHT! sound - big impact
+function playFightSound() {
+    if (!AUDIO.ctx) initAudio();
+    const ctx = AUDIO.ctx;
+    const now = ctx.currentTime;
+    
+    // Big low impact
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(200, now);
+    osc1.frequency.exponentialRampToValueAtTime(60, now + 0.3);
+    gain1.gain.setValueAtTime(0.5, now);
+    gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+    osc1.connect(gain1).connect(ctx.destination);
+    osc1.start(now);
+    osc1.stop(now + 0.3);
+    
+    // Bright attack
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = 'sawtooth';
+    osc2.frequency.setValueAtTime(800, now);
+    osc2.frequency.exponentialRampToValueAtTime(200, now + 0.1);
+    gain2.gain.setValueAtTime(0.25, now);
+    gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+    osc2.connect(gain2).connect(ctx.destination);
+    osc2.start(now);
+    osc2.stop(now + 0.15);
+    
+    // Impact noise
+    const bufferSize = ctx.sampleRate * 0.15;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 1.5);
+    }
+    const noise = ctx.createBufferSource();
+    const noiseGain = ctx.createGain();
+    noise.buffer = buffer;
+    noiseGain.gain.setValueAtTime(0.2, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+    noise.connect(noiseGain).connect(ctx.destination);
+    noise.start(now);
+}
+
+// =============================================================================
 // VISUAL EFFECTS - Drawing Functions
 // =============================================================================
 
@@ -765,6 +894,17 @@ const state = {
     hitStopTimer: 0, // Characters freeze but particles continue
     isClashHitStop: false, // Whether hit stop is from clash (vs death)
     debugMode: false, // Show collision boxes
+    
+    // Match intro state
+    introActive: false,
+    introPhase: 'none', // 'round', 'ready', 'countdown', 'fight', 'none'
+    introTimer: 0,
+    introData: {
+        roundSlideX: 0,      // X position for round text slide-in
+        readyLetters: 0,     // How many letters of "READY" to show
+        countdownNum: 3,     // Current countdown number
+        fightScale: 0,       // Scale for FIGHT! pop-in
+    },
 };
 
 // =============================================================================
@@ -942,6 +1082,11 @@ class Player {
                 this.respawnTimer--;
                 if (this.respawnTimer <= 0) this.respawn();
             }
+            return;
+        }
+        
+        // Freeze during match intro (except fight phase)
+        if (isIntroBlocking()) {
             return;
         }
         
@@ -2542,6 +2687,185 @@ function drawDebug(ctx) {
 }
 
 // =============================================================================
+// MATCH INTRO SYSTEM
+// =============================================================================
+
+// Intro timing (frames at 60fps)
+const INTRO_TIMING = {
+    ROUND_SLIDE_DURATION: 25,    // Time for ROUND X to slide in
+    ROUND_HOLD: 30,              // Time to hold ROUND X
+    READY_LETTER_DELAY: 4,       // Frames between each letter of READY
+    READY_HOLD: 20,              // Time to hold after READY complete
+    COUNTDOWN_DURATION: 45,      // Time for each countdown number
+    FIGHT_DURATION: 40,          // Time for FIGHT! to display
+};
+
+function startMatchIntro() {
+    state.introActive = true;
+    state.introPhase = 'round';
+    state.introTimer = 0;
+    state.introData = {
+        roundSlideX: -CONFIG.WIDTH,
+        readyLetters: 0,
+        countdownNum: 3,
+        fightScale: 0,
+    };
+    playSlideSound();
+}
+
+function updateIntro() {
+    if (!state.introActive) return;
+    
+    state.introTimer++;
+    const d = state.introData;
+    
+    switch (state.introPhase) {
+        case 'round':
+            // Slide ROUND X in from left
+            const slideProgress = Math.min(1, state.introTimer / INTRO_TIMING.ROUND_SLIDE_DURATION);
+            // Ease out quad
+            const eased = 1 - Math.pow(1 - slideProgress, 3);
+            d.roundSlideX = -CONFIG.WIDTH + (CONFIG.WIDTH / 2 + 100) * eased;
+            
+            if (state.introTimer >= INTRO_TIMING.ROUND_SLIDE_DURATION + INTRO_TIMING.ROUND_HOLD) {
+                state.introPhase = 'ready';
+                state.introTimer = 0;
+            }
+            break;
+            
+        case 'ready':
+            // Type out READY one letter at a time
+            const letterIndex = Math.floor(state.introTimer / INTRO_TIMING.READY_LETTER_DELAY);
+            if (letterIndex > d.readyLetters && letterIndex <= 5) {
+                d.readyLetters = letterIndex;
+                playTickSound();
+            }
+            
+            if (state.introTimer >= 5 * INTRO_TIMING.READY_LETTER_DELAY + INTRO_TIMING.READY_HOLD) {
+                state.introPhase = 'countdown';
+                state.introTimer = 0;
+                d.countdownNum = 3;
+                playCountdownSound(3);
+            }
+            break;
+            
+        case 'countdown':
+            // 3, 2, 1 countdown
+            const countdownPhase = Math.floor(state.introTimer / INTRO_TIMING.COUNTDOWN_DURATION);
+            const newNum = 3 - countdownPhase;
+            
+            if (newNum !== d.countdownNum && newNum >= 1) {
+                d.countdownNum = newNum;
+                playCountdownSound(newNum);
+            }
+            
+            if (state.introTimer >= INTRO_TIMING.COUNTDOWN_DURATION * 3) {
+                state.introPhase = 'fight';
+                state.introTimer = 0;
+                playFightSound();
+                state.screenShake = 15;
+            }
+            break;
+            
+        case 'fight':
+            // FIGHT! pop-in and hold
+            const fightProgress = Math.min(1, state.introTimer / 8);
+            // Elastic ease out
+            const elastic = 1 - Math.pow(2, -10 * fightProgress) * Math.cos(fightProgress * Math.PI * 2);
+            d.fightScale = elastic * 1.2;
+            
+            if (state.introTimer >= INTRO_TIMING.FIGHT_DURATION) {
+                state.introActive = false;
+                state.introPhase = 'none';
+            }
+            break;
+    }
+}
+
+function drawIntro(ctx) {
+    if (!state.introActive) return;
+    
+    const d = state.introData;
+    const centerX = CONFIG.WIDTH / 2;
+    const centerY = CONFIG.HEIGHT / 2;
+    
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    // Semi-transparent overlay
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+    ctx.fillRect(0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
+    
+    switch (state.introPhase) {
+        case 'round':
+            // ROUND X sliding in
+            ctx.font = 'bold 64px "Press Start 2P", monospace';
+            ctx.fillStyle = '#fff';
+            ctx.shadowColor = '#000';
+            ctx.shadowBlur = 10;
+            ctx.shadowOffsetX = 4;
+            ctx.shadowOffsetY = 4;
+            ctx.fillText(`ROUND ${state.round}`, d.roundSlideX, centerY - 30);
+            break;
+            
+        case 'ready':
+            // ROUND X (static now)
+            ctx.font = 'bold 64px "Press Start 2P", monospace';
+            ctx.fillStyle = '#fff';
+            ctx.shadowColor = '#000';
+            ctx.shadowBlur = 10;
+            ctx.shadowOffsetX = 4;
+            ctx.shadowOffsetY = 4;
+            ctx.fillText(`ROUND ${state.round}`, centerX, centerY - 30);
+            
+            // READY typing out
+            const readyText = 'READY'.substring(0, d.readyLetters);
+            ctx.font = 'bold 36px "Press Start 2P", monospace';
+            ctx.fillStyle = '#fbbf24';
+            ctx.fillText(readyText, centerX, centerY + 40);
+            break;
+            
+        case 'countdown':
+            // Big countdown number
+            const countdownScale = 1 + Math.sin((state.introTimer % INTRO_TIMING.COUNTDOWN_DURATION) / INTRO_TIMING.COUNTDOWN_DURATION * Math.PI) * 0.1;
+            ctx.font = `bold ${Math.floor(120 * countdownScale)}px "Press Start 2P", monospace`;
+            ctx.fillStyle = d.countdownNum === 1 ? '#f44' : '#fff';
+            ctx.shadowColor = '#000';
+            ctx.shadowBlur = 15;
+            ctx.shadowOffsetX = 5;
+            ctx.shadowOffsetY = 5;
+            ctx.fillText(d.countdownNum.toString(), centerX, centerY);
+            break;
+            
+        case 'fight':
+            // FIGHT! pop-in
+            const scale = d.fightScale;
+            ctx.font = `bold ${Math.floor(80 * scale)}px "Press Start 2P", monospace`;
+            
+            // Glow effect
+            ctx.shadowColor = '#f44';
+            ctx.shadowBlur = 30;
+            ctx.fillStyle = '#f44';
+            ctx.fillText('FIGHT!', centerX, centerY);
+            
+            // White core
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = '#fff';
+            ctx.font = `bold ${Math.floor(76 * scale)}px "Press Start 2P", monospace`;
+            ctx.fillText('FIGHT!', centerX, centerY);
+            break;
+    }
+    
+    ctx.restore();
+}
+
+// Check if intro is blocking gameplay
+function isIntroBlocking() {
+    return state.introActive && state.introPhase !== 'fight';
+}
+
+// =============================================================================
 // UI
 // =============================================================================
 
@@ -2641,9 +2965,12 @@ function resetMatch() {
     state.bullets = [];
     state.particles = [];
     state.slashEffects = [];
+    state.bloodBalls = [];
+    state.dashEchoes = [];
+    state.spawnTelegraphs = [];
     updateUI();
     hideMessage();
-    showMessage('FIGHT!', 60);
+    startMatchIntro();
 }
 
 // =============================================================================
@@ -2687,10 +3014,15 @@ function init() {
     }
     
     updateUI();
-    showMessage('FIGHT!', 60);
+    startMatchIntro();
 }
 
 function update() {
+    // Update match intro
+    if (state.introActive) {
+        updateIntro();
+    }
+    
     if (state.messageTimer > 0) {
         state.messageTimer--;
         if (state.messageTimer <= 0) hideMessage();
@@ -2814,6 +3146,9 @@ function draw() {
     
     // Draw players
     for (const p of state.players) p.draw(ctx);
+    
+    // Draw match intro overlay
+    drawIntro(ctx);
     
     // Debug overlay
     drawDebug(ctx);
