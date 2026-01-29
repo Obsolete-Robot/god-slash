@@ -19,15 +19,17 @@ const CONFIG = {
     
     // Player - Movement (tuned to 80% feel)
     PLAYER_SPEED: 3.52,
+    PLAYER_ACCEL: 0.6,        // Ground acceleration
+    PLAYER_DECEL: 0.75,       // Ground deceleration (friction when not moving)
+    PLAYER_AIR_ACCEL: 0.35,   // Air acceleration (less control in air)
+    PLAYER_AIR_DECEL: 0.95,   // Air deceleration (less friction in air)
     PLAYER_JUMP: -12.8,
-    PLAYER_DOUBLE_JUMP_MULT: 0.85,
     PLAYER_WALL_SLIDE: 2.4,
     PLAYER_WALL_JUMP_X: 8,
     PLAYER_WALL_JUMP_Y: -11.2,
     PLAYER_DASH_SPEED: 19.2,
     PLAYER_DASH_DURATION: 10,
     PLAYER_DASH_COOLDOWN: 38,
-    PLAYER_FAST_FALL: 12.8,
     
     // Combat - Slash (tuned to 80% feel)
     SLASH_WIDTH: 60,
@@ -80,9 +82,9 @@ const CONFIG = {
 // Tunable settings (subset of CONFIG that can be adjusted in debug panel)
 const TUNABLE_KEYS = [
     'GRAVITY', 'MAX_FALL_SPEED', 'FRICTION',
-    'PLAYER_SPEED', 'PLAYER_JUMP',
-    'PLAYER_WALL_SLIDE', 'PLAYER_WALL_JUMP_X', 'PLAYER_WALL_JUMP_Y',
-    'PLAYER_DASH_SPEED', 'PLAYER_DASH_DURATION', 'PLAYER_DASH_COOLDOWN', 'PLAYER_FAST_FALL',
+    'PLAYER_SPEED', 'PLAYER_ACCEL', 'PLAYER_DECEL', 'PLAYER_AIR_ACCEL', 'PLAYER_AIR_DECEL',
+    'PLAYER_JUMP', 'PLAYER_WALL_SLIDE', 'PLAYER_WALL_JUMP_X', 'PLAYER_WALL_JUMP_Y',
+    'PLAYER_DASH_SPEED', 'PLAYER_DASH_DURATION', 'PLAYER_DASH_COOLDOWN',
     'SLASH_WIDTH', 'SLASH_HEIGHT', 'SWORD_DURATION', 'SWORD_COOLDOWN',
     'SURFACE_DEFLECT_SPEED', 'HIT_STUN_DURATION', 'HIT_STUN_KNOCKBACK', 'CLASH_KNOCKBACK',
     'GROUND_SLASH_BOUNCE', 'WALL_SLASH_DELAY', 'HIT_STOP_DURATION', 'CLASH_HIT_STOP_DURATION',
@@ -613,7 +615,7 @@ function buildDebugPanel() {
     // Group settings by category
     const categories = {
         'Physics': ['GRAVITY', 'MAX_FALL_SPEED', 'FRICTION'],
-        'Movement': ['PLAYER_SPEED', 'PLAYER_JUMP', 'PLAYER_WALL_SLIDE', 'PLAYER_WALL_JUMP_X', 'PLAYER_WALL_JUMP_Y', 'PLAYER_DASH_SPEED', 'PLAYER_DASH_DURATION', 'PLAYER_DASH_COOLDOWN', 'PLAYER_FAST_FALL'],
+        'Movement': ['PLAYER_SPEED', 'PLAYER_ACCEL', 'PLAYER_DECEL', 'PLAYER_AIR_ACCEL', 'PLAYER_AIR_DECEL', 'PLAYER_JUMP', 'PLAYER_WALL_SLIDE', 'PLAYER_WALL_JUMP_X', 'PLAYER_WALL_JUMP_Y', 'PLAYER_DASH_SPEED', 'PLAYER_DASH_DURATION', 'PLAYER_DASH_COOLDOWN'],
         'Combat': ['SLASH_WIDTH', 'SLASH_HEIGHT', 'SWORD_DURATION', 'SWORD_COOLDOWN', 'SURFACE_DEFLECT_SPEED', 'HIT_STUN_DURATION', 'HIT_STUN_KNOCKBACK', 'CLASH_KNOCKBACK', 'GROUND_SLASH_BOUNCE', 'WALL_SLASH_DELAY'],
         'Air Slash': ['AIR_SLASH_FRICTION', 'AIR_SLASH_FALL_MULT'],
         'Hit Stop': ['HIT_STOP_DURATION', 'CLASH_HIT_STOP_DURATION'],
@@ -923,14 +925,25 @@ class Player {
     }
     
     handleInput() {
-        // Horizontal movement (blocked during movement lock)
+        // Horizontal movement with momentum (blocked during movement lock)
         if (this.movementLockTimer <= 0) {
+            const accel = this.grounded ? CONFIG.PLAYER_ACCEL : CONFIG.PLAYER_AIR_ACCEL;
+            const decel = this.grounded ? CONFIG.PLAYER_DECEL : CONFIG.PLAYER_AIR_DECEL;
+            
             if (keys['ArrowLeft'] || keys['KeyA']) {
-                this.vx = -CONFIG.PLAYER_SPEED;
+                // Accelerate left
+                this.vx -= accel;
+                if (this.vx < -CONFIG.PLAYER_SPEED) this.vx = -CONFIG.PLAYER_SPEED;
                 this.facing = -1;
             } else if (keys['ArrowRight'] || keys['KeyD']) {
-                this.vx = CONFIG.PLAYER_SPEED;
+                // Accelerate right
+                this.vx += accel;
+                if (this.vx > CONFIG.PLAYER_SPEED) this.vx = CONFIG.PLAYER_SPEED;
                 this.facing = 1;
+            } else {
+                // Decelerate (slide to stop)
+                this.vx *= decel;
+                if (Math.abs(this.vx) < 0.1) this.vx = 0;
             }
         }
         
@@ -1442,9 +1455,11 @@ class Player {
             }
         }
         
-        // Friction (only when not dashing)
-        if (!this.dashing && this.grounded) {
-            this.vx *= CONFIG.FRICTION;
+        // Friction only applies when dashing ends or for AI
+        if (this.isAI && !this.dashing) {
+            const decel = this.grounded ? CONFIG.PLAYER_DECEL : CONFIG.PLAYER_AIR_DECEL;
+            this.vx *= decel;
+            if (Math.abs(this.vx) < 0.1) this.vx = 0;
         }
         
         // Decrement drop-through timer
