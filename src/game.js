@@ -8,34 +8,34 @@
 // =============================================================================
 
 const CONFIG = {
-    // Canvas (internal resolution - pixel art scale)
-    WIDTH: 384,
-    HEIGHT: 216,
+    // Canvas (internal resolution - pixel art scale) - DOUBLED for new sprites
+    WIDTH: 768,
+    HEIGHT: 432,
     
-    // Physics
-    GRAVITY: 0.38,
+    // Physics (doubled for new scale)
+    GRAVITY: 0.76,
     FRICTION: 0.85,
     
-    // Player
-    PLAYER_SPEED: 2.2,
-    PLAYER_JUMP: -8,
-    PLAYER_WALL_SLIDE: 1.5,
-    PLAYER_WALL_JUMP_X: 5,
-    PLAYER_WALL_JUMP_Y: -7,
-    PLAYER_DASH_SPEED: 12,
+    // Player (doubled for new scale)
+    PLAYER_SPEED: 4.4,
+    PLAYER_JUMP: -16,
+    PLAYER_WALL_SLIDE: 3,
+    PLAYER_WALL_JUMP_X: 10,
+    PLAYER_WALL_JUMP_Y: -14,
+    PLAYER_DASH_SPEED: 24,
     PLAYER_DASH_DURATION: 8,
     PLAYER_DASH_COOLDOWN: 30,
-    PLAYER_FAST_FALL: 8,
+    PLAYER_FAST_FALL: 16,
     
-    // Combat
-    SWORD_RANGE: 24,
+    // Combat (doubled for new scale)
+    SWORD_RANGE: 48,
     SWORD_ARC: Math.PI * 0.6,
     SWORD_DURATION: 8,
     SWORD_COOLDOWN: 15,
-    SURFACE_DEFLECT_SPEED: 8, // Knockback from slashing surfaces
+    SURFACE_DEFLECT_SPEED: 16, // Knockback from slashing surfaces
     HIT_STUN_DURATION: 20,
-    HIT_STUN_KNOCKBACK: 8,
-    CLASH_KNOCKBACK: 10,
+    HIT_STUN_KNOCKBACK: 16,
+    CLASH_KNOCKBACK: 20,
     
     // Gun (DISABLED for now)
     GUN_ENABLED: false,
@@ -86,11 +86,13 @@ const ASSETS = {
     loaded: false,
     background: null,
     tiles: null,
+    player: null,
+    enemies: [],
 };
 
 function loadAssets() {
     let loadCount = 0;
-    const totalAssets = 2;
+    const totalAssets = 6; // bg, tiles, player, 3 enemies
     
     function onLoad() {
         loadCount++;
@@ -102,13 +104,28 @@ function loadAssets() {
     
     ASSETS.background = new Image();
     ASSETS.background.onload = onLoad;
-    ASSETS.background.onerror = onLoad; // Continue even if fails
+    ASSETS.background.onerror = onLoad;
     ASSETS.background.src = 'assets/bg-dojo.png';
     
     ASSETS.tiles = new Image();
     ASSETS.tiles.onload = onLoad;
     ASSETS.tiles.onerror = onLoad;
     ASSETS.tiles.src = 'assets/tiles-wood.png';
+    
+    // Load character sprites
+    ASSETS.player = new Image();
+    ASSETS.player.onload = onLoad;
+    ASSETS.player.onerror = onLoad;
+    ASSETS.player.src = 'assets/player.png';
+    
+    // Load enemy sprites
+    for (let i = 1; i <= 3; i++) {
+        const enemy = new Image();
+        enemy.onload = onLoad;
+        enemy.onerror = onLoad;
+        enemy.src = `assets/enemy${i}.png`;
+        ASSETS.enemies.push(enemy);
+    }
 }
 
 // =============================================================================
@@ -407,7 +424,7 @@ function drawSlashCrescent(ctx, x, y, dirX, dirY, progress) {
     ctx.translate(x, y);
     
     const alpha = 1 - progress * 0.7;
-    const scale = 0.5 + progress * 0.8;
+    const scale = 1.0 + progress * 1.6; // Doubled scale for larger resolution
     
     // Rotate based on direction
     let rotation = 0;
@@ -420,21 +437,21 @@ function drawSlashCrescent(ctx, x, y, dirX, dirY, progress) {
     ctx.scale(scale, scale);
     ctx.globalAlpha = alpha;
     
-    // Crescent moon slash
+    // Crescent moon slash (doubled size)
     ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 4;
+    ctx.lineWidth = 6;
     ctx.shadowColor = '#fff';
-    ctx.shadowBlur = 10;
+    ctx.shadowBlur = 15;
     
     ctx.beginPath();
-    ctx.arc(0, 0, 20, -Math.PI * 0.7, Math.PI * 0.3, false);
+    ctx.arc(0, 0, 35, -Math.PI * 0.7, Math.PI * 0.3, false);
     ctx.stroke();
     
     // Inner bright line
     ctx.strokeStyle = '#aef';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.arc(0, 0, 18, -Math.PI * 0.6, Math.PI * 0.2, false);
+    ctx.arc(0, 0, 32, -Math.PI * 0.6, Math.PI * 0.2, false);
     ctx.stroke();
     
     ctx.restore();
@@ -489,22 +506,22 @@ function createStage() {
     
     state.platforms = [
         // Ground
-        { x: 0, y: H - 16, w: W, h: 16 },
+        { x: 0, y: H - 32, w: W, h: 32 },
         
         // Left wall
-        { x: 0, y: 0, w: 16, h: H - 16 },
+        { x: 0, y: 0, w: 32, h: H - 32 },
         
         // Right wall
-        { x: W - 16, y: 0, w: 16, h: H - 16 },
+        { x: W - 32, y: 0, w: 32, h: H - 32 },
         
-        // Floating platforms
-        { x: 60, y: H - 70, w: 60, h: 8 },
-        { x: W - 120, y: H - 70, w: 60, h: 8 },
-        { x: W/2 - 40, y: H - 110, w: 80, h: 8 },
+        // Floating platforms (doubled)
+        { x: 120, y: H - 140, w: 120, h: 16 },
+        { x: W - 240, y: H - 140, w: 120, h: 16 },
+        { x: W/2 - 80, y: H - 220, w: 160, h: 16 },
         
-        // Upper platforms
-        { x: 30, y: H - 150, w: 50, h: 8 },
-        { x: W - 80, y: H - 150, w: 50, h: 8 },
+        // Upper platforms (doubled)
+        { x: 60, y: H - 300, w: 100, h: 16 },
+        { x: W - 160, y: H - 300, w: 100, h: 16 },
     ];
 }
 
@@ -513,13 +530,14 @@ function createStage() {
 // =============================================================================
 
 class Player {
-    constructor(x, y, isAI = false, color = COLORS.player1) {
+    constructor(x, y, isAI = false, color = COLORS.player1, enemyIndex = 0) {
         this.x = x;
         this.y = y;
         this.spawnX = x;
         this.spawnY = y;
-        this.w = 16;
-        this.h = 26;
+        this.w = 32;  // Doubled hitbox
+        this.h = 48;  // Doubled hitbox
+        this.enemyIndex = enemyIndex; // Which enemy sprite (0, 1, 2)
         this.vx = 0;
         this.vy = 0;
         this.facing = 1; // 1 = right, -1 = left
@@ -722,8 +740,8 @@ class Player {
                 this.facing = this.aiWanderDir;
                 
                 // Change direction at walls or randomly
-                if (this.x < 30 || this.wallDir === -1) this.aiWanderDir = 1;
-                else if (this.x > CONFIG.WIDTH - 30 || this.wallDir === 1) this.aiWanderDir = -1;
+                if (this.x < 60 || this.wallDir === -1) this.aiWanderDir = 1;
+                else if (this.x > CONFIG.WIDTH - 60 || this.wallDir === 1) this.aiWanderDir = -1;
                 else if (Math.random() < 0.02) this.aiWanderDir *= -1;
                 
                 // Random jump while wandering
@@ -795,8 +813,8 @@ class Player {
     aiWander() {
         this.vx = this.aiWanderDir * CONFIG.PLAYER_SPEED * 0.5;
         this.facing = this.aiWanderDir;
-        if (this.x < 30) this.aiWanderDir = 1;
-        else if (this.x > CONFIG.WIDTH - 30) this.aiWanderDir = -1;
+        if (this.x < 60) this.aiWanderDir = 1;
+        else if (this.x > CONFIG.WIDTH - 60) this.aiWanderDir = -1;
         else if (Math.random() < 0.01) this.aiWanderDir *= -1;
         if (this.grounded && Math.random() < 0.02) this.vy = CONFIG.PLAYER_JUMP * 0.7;
     }
@@ -1100,31 +1118,50 @@ class Player {
             ctx.globalAlpha = 0.5;
         }
         
-        // Determine current animation frame
-        if (this.slashing) {
-            this.currentFrame = 'slash';
-        } else if (this.stunned) {
-            this.currentFrame = 'idle';
-        } else if (!this.grounded) {
-            this.currentFrame = 'jump';
-        } else if (Math.abs(this.vx) > 0.5) {
-            this.currentFrame = 'run';
-        } else {
-            this.currentFrame = 'idle';
+        // Flash white when stunned
+        if (this.stunned && Math.floor(this.stunTimer / 3) % 2 === 0) {
+            ctx.globalAlpha = 0.6;
         }
         
-        // Draw character using procedural pixel art
+        // Get the appropriate sprite
+        let sprite;
         if (this.isAI) {
-            drawOni(ctx, this.x, this.y, this.w, this.h, this.facing, this.currentFrame, this.stunned);
+            sprite = ASSETS.enemies[this.enemyIndex % ASSETS.enemies.length];
         } else {
-            drawSamurai(ctx, this.x, this.y, this.w, this.h, this.facing, this.currentFrame, this.stunned);
+            sprite = ASSETS.player;
+        }
+        
+        // Draw sprite
+        if (sprite && sprite.complete && sprite.naturalWidth > 0) {
+            const spriteW = sprite.naturalWidth;
+            const spriteH = sprite.naturalHeight;
+            
+            ctx.save();
+            
+            // Flip horizontally if facing left
+            if (this.facing === -1) {
+                ctx.translate(this.x + this.w / 2, 0);
+                ctx.scale(-1, 1);
+                ctx.translate(-(this.x + this.w / 2), 0);
+            }
+            
+            // Center sprite on hitbox
+            const drawX = this.x + (this.w - spriteW) / 2;
+            const drawY = this.y + (this.h - spriteH);
+            
+            ctx.drawImage(sprite, drawX, drawY);
+            ctx.restore();
+        } else {
+            // Fallback to colored rectangle
+            ctx.fillStyle = this.isAI ? COLORS.player2 : COLORS.player1;
+            ctx.fillRect(this.x, this.y, this.w, this.h);
         }
         
         // Draw crescent slash effect when slashing
         if (this.slashing) {
             const slashProgress = 1 - (this.slashTimer / CONFIG.SWORD_DURATION);
-            const slashX = this.x + this.w/2 + this.slashDir.x * 20;
-            const slashY = this.y + this.h/2 + this.slashDir.y * 20;
+            const slashX = this.x + this.w/2 + this.slashDir.x * 40;
+            const slashY = this.y + this.h/2 + this.slashDir.y * 40;
             drawSlashCrescent(ctx, slashX, slashY, this.slashDir.x || this.facing, this.slashDir.y, slashProgress);
         }
         
@@ -1402,19 +1439,19 @@ function init() {
     
     // Create player
     state.players = [
-        new Player(60, CONFIG.HEIGHT - 60, false, COLORS.player1),
+        new Player(120, CONFIG.HEIGHT - 120, false, COLORS.player1),
     ];
     
-    // Spawn multiple enemies at different positions
+    // Spawn multiple enemies at different positions with different sprites
     const enemySpawns = [
-        { x: CONFIG.WIDTH - 80, y: CONFIG.HEIGHT - 60 },
-        { x: CONFIG.WIDTH / 2, y: CONFIG.HEIGHT - 130 },
-        { x: 80, y: CONFIG.HEIGHT - 170 },
+        { x: CONFIG.WIDTH - 160, y: CONFIG.HEIGHT - 120 },
+        { x: CONFIG.WIDTH / 2, y: CONFIG.HEIGHT - 260 },
+        { x: 160, y: CONFIG.HEIGHT - 340 },
     ];
     
     for (let i = 0; i < CONFIG.ENEMY_COUNT; i++) {
         const spawn = enemySpawns[i % enemySpawns.length];
-        state.players.push(new Player(spawn.x, spawn.y, true, COLORS.player2));
+        state.players.push(new Player(spawn.x, spawn.y, true, COLORS.player2, i));
     }
     
     updateUI();
