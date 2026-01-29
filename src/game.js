@@ -77,37 +77,12 @@ const COLORS = {
 const ASSETS = {
     loaded: false,
     background: null,
-    playerSprite: null,
-    enemySprite: null,
     tiles: null,
 };
 
-// Sprite frame definitions (x, y, width, height in source image)
-// Blue samurai sprite sheet layout (estimated from generated image)
-const PLAYER_FRAMES = {
-    idle: { x: 0, y: 0, w: 170, h: 250 },
-    run: { x: 170, y: 0, w: 170, h: 250 },
-    attack: { x: 340, y: 0, w: 200, h: 250 },
-    jump: { x: 0, y: 250, w: 170, h: 250 },
-    crouch: { x: 170, y: 250, w: 170, h: 250 },
-    slash: { x: 340, y: 250, w: 200, h: 250 },
-};
-
-// Red oni sprite sheet layout
-const ENEMY_FRAMES = {
-    idle: { x: 0, y: 0, w: 120, h: 180 },
-    run: { x: 280, y: 280, w: 120, h: 180 },
-    attack: { x: 140, y: 0, w: 200, h: 280 },
-    jump: { x: 340, y: 0, w: 100, h: 150 },
-    slash: { x: 0, y: 280, w: 150, h: 180 },
-};
-
-// Sprite scale (how much to shrink sprites to fit game)
-const SPRITE_SCALE = 0.12;
-
 function loadAssets() {
     let loadCount = 0;
-    const totalAssets = 4;
+    const totalAssets = 2;
     
     function onLoad() {
         loadCount++;
@@ -119,19 +94,183 @@ function loadAssets() {
     
     ASSETS.background = new Image();
     ASSETS.background.onload = onLoad;
+    ASSETS.background.onerror = onLoad; // Continue even if fails
     ASSETS.background.src = 'assets/bg-dojo.png';
-    
-    ASSETS.playerSprite = new Image();
-    ASSETS.playerSprite.onload = onLoad;
-    ASSETS.playerSprite.src = 'assets/samurai-blue.png';
-    
-    ASSETS.enemySprite = new Image();
-    ASSETS.enemySprite.onload = onLoad;
-    ASSETS.enemySprite.src = 'assets/samurai-red.png';
     
     ASSETS.tiles = new Image();
     ASSETS.tiles.onload = onLoad;
+    ASSETS.tiles.onerror = onLoad;
     ASSETS.tiles.src = 'assets/tiles-wood.png';
+}
+
+// =============================================================================
+// PIXEL ART DRAWING FUNCTIONS
+// =============================================================================
+
+// Draw blue samurai (player)
+function drawSamurai(ctx, x, y, w, h, facing, frame, stunned) {
+    ctx.save();
+    
+    const centerX = x + w / 2;
+    
+    // Flip if facing left
+    if (facing === -1) {
+        ctx.translate(centerX, 0);
+        ctx.scale(-1, 1);
+        ctx.translate(-centerX, 0);
+    }
+    
+    // Colors
+    const blue = stunned ? '#fff' : '#2563eb';
+    const darkBlue = stunned ? '#ccc' : '#1d4ed8';
+    const skin = stunned ? '#fcc' : '#fcd5b8';
+    const white = '#fff';
+    
+    // Animation offsets
+    let legOffset = 0;
+    let armOffset = 0;
+    let bodyBob = 0;
+    
+    if (frame === 'run') {
+        legOffset = Math.sin(Date.now() * 0.02) * 3;
+        bodyBob = Math.abs(Math.sin(Date.now() * 0.02)) * 1;
+    } else if (frame === 'jump') {
+        legOffset = 2;
+    }
+    
+    const bx = Math.floor(x);
+    const by = Math.floor(y - bodyBob);
+    
+    // Helmet (kabuto)
+    ctx.fillStyle = darkBlue;
+    ctx.fillRect(bx + 2, by, w - 4, 6);
+    ctx.fillRect(bx + 4, by - 2, w - 8, 3); // Helmet crest
+    
+    // Face
+    ctx.fillStyle = skin;
+    ctx.fillRect(bx + 4, by + 6, w - 8, 5);
+    
+    // Eyes
+    ctx.fillStyle = '#000';
+    ctx.fillRect(bx + 6, by + 7, 2, 2);
+    
+    // Body armor
+    ctx.fillStyle = blue;
+    ctx.fillRect(bx + 3, by + 11, w - 6, 8);
+    ctx.fillStyle = darkBlue;
+    ctx.fillRect(bx + 3, by + 11, w - 6, 2); // Shoulder
+    
+    // Legs
+    ctx.fillStyle = darkBlue;
+    ctx.fillRect(bx + 4, by + 19, 4, 6 + legOffset);
+    ctx.fillRect(bx + w - 8, by + 19, 4, 6 - legOffset);
+    
+    // Sword on back (when not slashing)
+    if (frame !== 'slash') {
+        ctx.fillStyle = '#888';
+        ctx.fillRect(bx + w - 4, by + 8, 2, 12);
+        ctx.fillStyle = '#654321';
+        ctx.fillRect(bx + w - 4, by + 8, 2, 3);
+    }
+    
+    ctx.restore();
+}
+
+// Draw red oni demon (enemy)
+function drawOni(ctx, x, y, w, h, facing, frame, stunned) {
+    ctx.save();
+    
+    const centerX = x + w / 2;
+    
+    if (facing === -1) {
+        ctx.translate(centerX, 0);
+        ctx.scale(-1, 1);
+        ctx.translate(-centerX, 0);
+    }
+    
+    // Colors
+    const red = stunned ? '#fff' : '#dc2626';
+    const darkRed = stunned ? '#ccc' : '#991b1b';
+    const yellow = stunned ? '#ffc' : '#fbbf24';
+    
+    let legOffset = 0;
+    let bodyBob = 0;
+    
+    if (frame === 'run') {
+        legOffset = Math.sin(Date.now() * 0.02) * 3;
+        bodyBob = Math.abs(Math.sin(Date.now() * 0.02)) * 1;
+    }
+    
+    const bx = Math.floor(x);
+    const by = Math.floor(y - bodyBob);
+    
+    // Horns
+    ctx.fillStyle = '#888';
+    ctx.fillRect(bx + 2, by - 4, 3, 5);
+    ctx.fillRect(bx + w - 5, by - 4, 3, 5);
+    
+    // Head
+    ctx.fillStyle = red;
+    ctx.fillRect(bx + 3, by, w - 6, 8);
+    
+    // Eyes (yellow glowing)
+    ctx.fillStyle = yellow;
+    ctx.fillRect(bx + 5, by + 3, 3, 2);
+    ctx.fillRect(bx + w - 8, by + 3, 3, 2);
+    
+    // Fangs
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(bx + 6, by + 7, 2, 2);
+    ctx.fillRect(bx + w - 8, by + 7, 2, 2);
+    
+    // Body
+    ctx.fillStyle = red;
+    ctx.fillRect(bx + 2, by + 10, w - 4, 9);
+    ctx.fillStyle = darkRed;
+    ctx.fillRect(bx + 4, by + 12, w - 8, 2); // Chest shadow
+    
+    // Legs
+    ctx.fillStyle = darkRed;
+    ctx.fillRect(bx + 3, by + 19, 5, 6 + legOffset);
+    ctx.fillRect(bx + w - 8, by + 19, 5, 6 - legOffset);
+    
+    // Tail
+    ctx.fillStyle = red;
+    ctx.fillRect(bx + w - 2, by + 15, 4, 3);
+    ctx.fillRect(bx + w + 1, by + 17, 3, 2);
+    
+    ctx.restore();
+}
+
+// Draw crescent moon slash effect
+function drawSlashCrescent(ctx, x, y, facing, progress) {
+    ctx.save();
+    ctx.translate(x, y);
+    
+    const alpha = 1 - progress * 0.7;
+    const scale = 0.5 + progress * 0.8;
+    
+    ctx.scale(scale * facing, scale);
+    ctx.globalAlpha = alpha;
+    
+    // Crescent moon slash
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 4;
+    ctx.shadowColor = '#fff';
+    ctx.shadowBlur = 10;
+    
+    ctx.beginPath();
+    ctx.arc(0, 0, 20, -Math.PI * 0.7, Math.PI * 0.3, false);
+    ctx.stroke();
+    
+    // Inner bright line
+    ctx.strokeStyle = '#aef';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, 18, -Math.PI * 0.6, Math.PI * 0.2, false);
+    ctx.stroke();
+    
+    ctx.restore();
 }
 
 // =============================================================================
@@ -208,17 +347,13 @@ class Player {
         this.y = y;
         this.spawnX = x;
         this.spawnY = y;
-        this.w = 20;  // Slightly wider for sprites
-        this.h = 28;  // Slightly taller for sprites
+        this.w = 16;
+        this.h = 26;
         this.vx = 0;
         this.vy = 0;
         this.facing = 1; // 1 = right, -1 = left
         this.color = color;
         this.isAI = isAI;
-        
-        // Sprite setup
-        this.sprite = isAI ? ASSETS.enemySprite : ASSETS.playerSprite;
-        this.frames = isAI ? ENEMY_FRAMES : PLAYER_FRAMES;
         this.currentFrame = 'idle';
         
         // State flags
@@ -718,11 +853,6 @@ class Player {
             ctx.globalAlpha = 0.5;
         }
         
-        // Flash red when stunned
-        if (this.stunned) {
-            ctx.globalAlpha = 0.5 + Math.sin(Date.now() * 0.05) * 0.3;
-        }
-        
         // Determine current animation frame
         if (this.slashing) {
             this.currentFrame = 'slash';
@@ -736,63 +866,19 @@ class Player {
             this.currentFrame = 'idle';
         }
         
-        // Try to draw sprite, fallback to rectangle
-        const frame = this.frames[this.currentFrame] || this.frames.idle;
-        const sprite = this.sprite;
-        
-        if (ASSETS.loaded && sprite && sprite.complete && frame) {
-            // Calculate draw dimensions
-            const drawW = frame.w * SPRITE_SCALE;
-            const drawH = frame.h * SPRITE_SCALE;
-            
-            // Center sprite on hitbox
-            const drawX = this.x + this.w/2 - drawW/2;
-            const drawY = this.y + this.h - drawH; // Align feet
-            
-            ctx.save();
-            
-            // Flip sprite based on facing direction
-            if (this.facing === -1) {
-                ctx.translate(drawX + drawW, drawY);
-                ctx.scale(-1, 1);
-                ctx.drawImage(
-                    sprite,
-                    frame.x, frame.y, frame.w, frame.h,
-                    0, 0, drawW, drawH
-                );
-            } else {
-                ctx.drawImage(
-                    sprite,
-                    frame.x, frame.y, frame.w, frame.h,
-                    drawX, drawY, drawW, drawH
-                );
-            }
-            
-            // Tint white when stunned
-            if (this.stunned) {
-                ctx.globalCompositeOperation = 'source-atop';
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-                ctx.fillRect(drawX, drawY, drawW, drawH);
-            }
-            
-            ctx.restore();
+        // Draw character using procedural pixel art
+        if (this.isAI) {
+            drawOni(ctx, this.x, this.y, this.w, this.h, this.facing, this.currentFrame, this.stunned);
         } else {
-            // Fallback: colored rectangle
-            ctx.fillStyle = this.stunned ? '#fff' : this.color;
-            ctx.fillRect(Math.floor(this.x), Math.floor(this.y), this.w, this.h);
-            
-            // Eyes
-            ctx.fillStyle = this.stunned ? '#f00' : '#fff';
-            const eyeX = this.x + this.w/2 + this.facing * 3;
-            ctx.fillRect(Math.floor(eyeX), Math.floor(this.y + 5), 2, 2);
-            
-            // Sword when slashing
-            if (this.slashing) {
-                ctx.fillStyle = COLORS.sword;
-                const swordX = this.x + this.w/2 + this.facing * 15;
-                const swordY = this.y + this.h/2 - 2;
-                ctx.fillRect(Math.floor(swordX), Math.floor(swordY), this.facing * 18, 4);
-            }
+            drawSamurai(ctx, this.x, this.y, this.w, this.h, this.facing, this.currentFrame, this.stunned);
+        }
+        
+        // Draw crescent slash effect when slashing
+        if (this.slashing) {
+            const slashProgress = 1 - (this.slashTimer / CONFIG.SWORD_DURATION);
+            const slashX = this.x + this.w/2 + this.facing * 20;
+            const slashY = this.y + this.h/2;
+            drawSlashCrescent(ctx, slashX, slashY, this.facing, slashProgress);
         }
         
         ctx.restore();
@@ -924,15 +1010,8 @@ function updateSlashEffects() {
 
 function drawSlashEffects(ctx) {
     for (const s of state.slashEffects) {
-        ctx.save();
-        ctx.translate(s.x, s.y);
-        ctx.strokeStyle = COLORS.sword;
-        ctx.lineWidth = 2;
-        ctx.globalAlpha = s.timer / CONFIG.SWORD_DURATION;
-        ctx.beginPath();
-        ctx.arc(0, 0, CONFIG.SWORD_RANGE, -CONFIG.SWORD_ARC/2 * s.dir, CONFIG.SWORD_ARC/2 * s.dir);
-        ctx.stroke();
-        ctx.restore();
+        const progress = 1 - (s.timer / CONFIG.SWORD_DURATION);
+        drawSlashCrescent(ctx, s.x, s.y, s.dir, progress);
     }
 }
 
