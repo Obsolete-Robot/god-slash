@@ -78,6 +78,20 @@ const CONFIG = {
     AI_RETREAT_CHANCE: 0.15,    // Chance to retreat after decisions
     AI_RETREAT_DURATION: 120,   // Frames to retreat (~2 sec)
     
+    // Dash Collision
+    DASH_BUMP_SPEED: 10,        // Speed to bump non-dashing player
+    DASH_BUMP_UP: -5,           // Upward pop on bump
+    DASH_RICOCHET_SPEED: 14,    // Speed when two dashes collide
+    DASH_RICOCHET_UP: -6,       // Upward pop on ricochet
+    BUMP_LOCK_DURATION: 9,      // Frames of movement lock after bump (~0.15 sec)
+    
+    // VFX Timers
+    CLASH_GLOW_DURATION: 25,    // Frames of white glow after clash
+    DASH_ECHO_DURATION: 15,     // Frames each echo lasts
+    DASH_ECHO_INTERVAL: 2,      // Spawn echo every N frames during dash
+    BLOOD_BALL_COUNT_MIN: 4,    // Min blood balls on kill
+    BLOOD_BALL_COUNT_MAX: 7,    // Max blood balls on kill
+    
     // Gun (DISABLED)
     GUN_ENABLED: false,
     BULLET_SPEED: 8,
@@ -535,143 +549,8 @@ function playBumperSound() {
 }
 
 // =============================================================================
-// PIXEL ART DRAWING FUNCTIONS
+// VISUAL EFFECTS - Drawing Functions
 // =============================================================================
-
-// Draw blue samurai (player)
-function drawSamurai(ctx, x, y, w, h, facing, frame, stunned) {
-    ctx.save();
-    
-    const centerX = x + w / 2;
-    
-    // Flip if facing left
-    if (facing === -1) {
-        ctx.translate(centerX, 0);
-        ctx.scale(-1, 1);
-        ctx.translate(-centerX, 0);
-    }
-    
-    // Colors
-    const blue = stunned ? '#fff' : '#2563eb';
-    const darkBlue = stunned ? '#ccc' : '#1d4ed8';
-    const skin = stunned ? '#fcc' : '#fcd5b8';
-    const white = '#fff';
-    
-    // Animation offsets
-    let legOffset = 0;
-    let armOffset = 0;
-    let bodyBob = 0;
-    
-    if (frame === 'run') {
-        legOffset = Math.sin(Date.now() * 0.02) * 3;
-        bodyBob = Math.abs(Math.sin(Date.now() * 0.02)) * 1;
-    } else if (frame === 'jump') {
-        legOffset = 2;
-    }
-    
-    const bx = Math.floor(x);
-    const by = Math.floor(y - bodyBob);
-    
-    // Helmet (kabuto)
-    ctx.fillStyle = darkBlue;
-    ctx.fillRect(bx + 2, by, w - 4, 6);
-    ctx.fillRect(bx + 4, by - 2, w - 8, 3); // Helmet crest
-    
-    // Face
-    ctx.fillStyle = skin;
-    ctx.fillRect(bx + 4, by + 6, w - 8, 5);
-    
-    // Eyes
-    ctx.fillStyle = '#000';
-    ctx.fillRect(bx + 6, by + 7, 2, 2);
-    
-    // Body armor
-    ctx.fillStyle = blue;
-    ctx.fillRect(bx + 3, by + 11, w - 6, 8);
-    ctx.fillStyle = darkBlue;
-    ctx.fillRect(bx + 3, by + 11, w - 6, 2); // Shoulder
-    
-    // Legs
-    ctx.fillStyle = darkBlue;
-    ctx.fillRect(bx + 4, by + 19, 4, 6 + legOffset);
-    ctx.fillRect(bx + w - 8, by + 19, 4, 6 - legOffset);
-    
-    // Sword on back (when not slashing)
-    if (frame !== 'slash') {
-        ctx.fillStyle = '#888';
-        ctx.fillRect(bx + w - 4, by + 8, 2, 12);
-        ctx.fillStyle = '#654321';
-        ctx.fillRect(bx + w - 4, by + 8, 2, 3);
-    }
-    
-    ctx.restore();
-}
-
-// Draw red oni demon (enemy)
-function drawOni(ctx, x, y, w, h, facing, frame, stunned) {
-    ctx.save();
-    
-    const centerX = x + w / 2;
-    
-    if (facing === -1) {
-        ctx.translate(centerX, 0);
-        ctx.scale(-1, 1);
-        ctx.translate(-centerX, 0);
-    }
-    
-    // Colors
-    const red = stunned ? '#fff' : '#dc2626';
-    const darkRed = stunned ? '#ccc' : '#991b1b';
-    const yellow = stunned ? '#ffc' : '#fbbf24';
-    
-    let legOffset = 0;
-    let bodyBob = 0;
-    
-    if (frame === 'run') {
-        legOffset = Math.sin(Date.now() * 0.02) * 3;
-        bodyBob = Math.abs(Math.sin(Date.now() * 0.02)) * 1;
-    }
-    
-    const bx = Math.floor(x);
-    const by = Math.floor(y - bodyBob);
-    
-    // Horns
-    ctx.fillStyle = '#888';
-    ctx.fillRect(bx + 2, by - 4, 3, 5);
-    ctx.fillRect(bx + w - 5, by - 4, 3, 5);
-    
-    // Head
-    ctx.fillStyle = red;
-    ctx.fillRect(bx + 3, by, w - 6, 8);
-    
-    // Eyes (yellow glowing)
-    ctx.fillStyle = yellow;
-    ctx.fillRect(bx + 5, by + 3, 3, 2);
-    ctx.fillRect(bx + w - 8, by + 3, 3, 2);
-    
-    // Fangs
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(bx + 6, by + 7, 2, 2);
-    ctx.fillRect(bx + w - 8, by + 7, 2, 2);
-    
-    // Body
-    ctx.fillStyle = red;
-    ctx.fillRect(bx + 2, by + 10, w - 4, 9);
-    ctx.fillStyle = darkRed;
-    ctx.fillRect(bx + 4, by + 12, w - 8, 2); // Chest shadow
-    
-    // Legs
-    ctx.fillStyle = darkRed;
-    ctx.fillRect(bx + 3, by + 19, 5, 6 + legOffset);
-    ctx.fillRect(bx + w - 8, by + 19, 5, 6 - legOffset);
-    
-    // Tail
-    ctx.fillStyle = red;
-    ctx.fillRect(bx + w - 2, by + 15, 4, 3);
-    ctx.fillRect(bx + w + 1, by + 17, 3, 2);
-    
-    ctx.restore();
-}
 
 // Draw rectangular slash effect matching hitbox
 function drawSlashRect(ctx, hitbox, dirX, dirY, progress) {
@@ -1106,7 +985,7 @@ class Player {
         if (this.dashing) {
             this.dashTimer--;
             // Spawn echo every 2 frames during dash
-            if (this.dashTimer % 2 === 0 && this.dashTimer > 0) {
+            if (this.dashTimer % CONFIG.DASH_ECHO_INTERVAL === 0 && this.dashTimer > 0) {
                 spawnDashEcho(this);
             }
             if (this.dashTimer <= 0) this.dashing = false;
@@ -1573,8 +1452,8 @@ class Player {
                     other.pendingClash = true;
                     
                     // Set clash glow on both players
-                    this.clashGlowTimer = 25;
-                    other.clashGlowTimer = 25;
+                    this.clashGlowTimer = CONFIG.CLASH_GLOW_DURATION;
+                    other.clashGlowTimer = CONFIG.CLASH_GLOW_DURATION;
                     
                     // Enhanced clash particles - bigger radial spark burst
                     const clashX = (this.x + other.x) / 2 + 8;
@@ -1704,8 +1583,8 @@ class Player {
                     
                     if (facingEachOther) {
                         // Dash ricochet! Both bounce away
-                        const bounceSpeed = 14;
-                        const bounceUp = -6;
+                        const bounceSpeed = CONFIG.DASH_RICOCHET_SPEED;
+                        const bounceUp = CONFIG.DASH_RICOCHET_UP;
                         
                         if (this.x < other.x) {
                             this.x = other.x - this.w;
@@ -1723,9 +1602,9 @@ class Player {
                         this.dashing = false;
                         other.dashing = false;
                         
-                        // Movement lock for both (~0.15 sec = 9 frames)
-                        this.movementLockTimer = 9;
-                        other.movementLockTimer = 9;
+                        // Movement lock for both
+                        this.movementLockTimer = CONFIG.BUMP_LOCK_DURATION;
+                        other.movementLockTimer = CONFIG.BUMP_LOCK_DURATION;
                         
                         // VFX and SFX
                         spawnDashBumpParticles(collisionX, collisionY);
@@ -1738,14 +1617,12 @@ class Player {
                 
                 // One dashing into non-dashing = bump
                 if (thisDashing && !otherDashing) {
-                    const bumpSpeed = 10;
-                    const bumpUp = -5;
                     const pushDir = this.x < other.x ? 1 : -1;
                     
                     // Bump the other player
-                    other.vx = pushDir * bumpSpeed;
-                    other.vy = bumpUp;
-                    other.movementLockTimer = 9; // ~0.15 sec
+                    other.vx = pushDir * CONFIG.DASH_BUMP_SPEED;
+                    other.vy = CONFIG.DASH_BUMP_UP;
+                    other.movementLockTimer = CONFIG.BUMP_LOCK_DURATION;
                     
                     // Slight recoil for dasher
                     this.vx *= 0.5;
@@ -2018,11 +1895,11 @@ class Player {
             
             // Clash glow effect - white glowing border
             if (this.clashGlowTimer > 0) {
-                const glowAlpha = this.clashGlowTimer / 25;
+                const glowAlpha = this.clashGlowTimer / CONFIG.CLASH_GLOW_DURATION;
                 ctx.save();
                 ctx.globalAlpha = glowAlpha;
                 ctx.shadowColor = '#fff';
-                ctx.shadowBlur = 15 + (this.clashGlowTimer / 25) * 10;
+                ctx.shadowBlur = 15 + glowAlpha * 10;
                 ctx.globalCompositeOperation = 'source-over';
                 // Draw sprite again with glow
                 ctx.drawImage(sprite, drawX, drawY);
@@ -2041,10 +1918,10 @@ class Player {
             
             // Clash glow for fallback
             if (this.clashGlowTimer > 0) {
-                const glowAlpha = this.clashGlowTimer / 25;
+                const glowAlpha = this.clashGlowTimer / CONFIG.CLASH_GLOW_DURATION;
                 ctx.save();
                 ctx.shadowColor = '#fff';
-                ctx.shadowBlur = 15 + (this.clashGlowTimer / 25) * 10;
+                ctx.shadowBlur = 15 + glowAlpha * 10;
                 ctx.strokeStyle = `rgba(255, 255, 255, ${glowAlpha})`;
                 ctx.lineWidth = 3;
                 ctx.strokeRect(this.x - 1, this.y - 1, this.w + 2, this.h + 2);
@@ -2304,7 +2181,7 @@ function drawSpawnTelegraphs(ctx) {
 // =============================================================================
 
 function spawnBloodBalls(x, y, slashDirX, slashDirY) {
-    const ballCount = 4 + Math.floor(Math.random() * 3); // 4-6 balls
+    const ballCount = CONFIG.BLOOD_BALL_COUNT_MIN + Math.floor(Math.random() * (CONFIG.BLOOD_BALL_COUNT_MAX - CONFIG.BLOOD_BALL_COUNT_MIN));
     
     for (let i = 0; i < ballCount; i++) {
         // Main direction follows slash, with spread
@@ -2452,8 +2329,8 @@ function spawnDashEcho(player) {
         facing: player.facing,
         isAI: player.isAI,
         enemyIndex: player.enemyIndex,
-        life: 15,
-        maxLife: 15,
+        life: CONFIG.DASH_ECHO_DURATION,
+        maxLife: CONFIG.DASH_ECHO_DURATION,
     });
 }
 
