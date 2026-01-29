@@ -904,6 +904,7 @@ class Player {
         this.aiWanderDir = 1;
         this.aiIdleTimer = 0;
         this.aiPatrolTarget = null;
+        this.aiAttackDelay = 0; // Frames to wait before attacking
     }
     
     update() {
@@ -1101,7 +1102,22 @@ class Player {
                 this.aiAccelerate(Math.sign(dx));
                 this.facing = dx > 0 ? 1 : -1;
                 
-                // Only jump if target is significantly above AND we're not already above them
+                // Attack while chasing if in range!
+                const chaseAttackRange = CONFIG.SLASH_WIDTH + 30;
+                if (dist < chaseAttackRange && this.slashCooldown <= 0 && Math.random() < 0.15) {
+                    const absDx = Math.abs(dx);
+                    const absDy = Math.abs(dy);
+                    if (absDy > absDx * 1.2 && dy < 0) {
+                        this.slashDir = { x: 0, y: -1 };
+                    } else if (absDy > absDx * 1.2 && dy > 0) {
+                        this.slashDir = { x: 0, y: 1 };
+                    } else {
+                        this.slashDir = { x: dx > 0 ? 1 : -1, y: 0 };
+                    }
+                    this.slash();
+                }
+                
+                // Only jump if target is significantly above
                 if (dy < -60 && this.grounded && Math.random() < 0.1) {
                     this.vy = CONFIG.PLAYER_JUMP;
                 }
@@ -1119,31 +1135,32 @@ class Player {
                 
             case 'attack':
                 this.facing = dx > 0 ? 1 : -1;
-                if (dist < CONFIG.SLASH_WIDTH * 1.5 && this.slashCooldown <= 0) {
-                    // AI picks slash direction toward target using all 4 directions
+                const attackRange = CONFIG.SLASH_WIDTH + 20; // Attack range
+                
+                // Decrement attack delay
+                if (this.aiAttackDelay > 0) this.aiAttackDelay--;
+                
+                // Move toward target while attacking
+                if (dist > attackRange * 0.5) {
+                    this.aiAccelerate(Math.sign(dx));
+                }
+                
+                // Attack when in range and delay is done
+                if (dist < attackRange && this.slashCooldown <= 0 && this.aiAttackDelay <= 0) {
+                    // AI picks slash direction toward target
                     const absDx = Math.abs(dx);
                     const absDy = Math.abs(dy);
                     
                     if (absDy > absDx * 1.2 && dy < 0) {
-                        // Target is above
                         this.slashDir = { x: 0, y: -1 };
                     } else if (absDy > absDx * 1.2 && dy > 0) {
-                        // Target is below
                         this.slashDir = { x: 0, y: 1 };
                     } else {
-                        // Target is horizontal
                         this.slashDir = { x: dx > 0 ? 1 : -1, y: 0 };
                     }
                     this.slash();
                     this.aiAction = 'retreat';
-                    this.aiDecisionTimer = 20;
-                } else if (dist < CONFIG.SLASH_WIDTH * 2.5) {
-                    // Close in for attack with momentum
-                    this.aiAccelerate(Math.sign(dx));
-                    // Random whiff while approaching
-                    if (Math.random() < 0.03 && this.slashCooldown <= 0) {
-                        this.aiRandomSlash();
-                    }
+                    this.aiDecisionTimer = 15 + Math.floor(Math.random() * 15);
                 }
                 break;
                 
@@ -1222,29 +1239,31 @@ class Player {
     makeAIDecision(target, dist) {
         const dx = target.x - this.x;
         const rand = Math.random();
+        const attackRange = CONFIG.SLASH_WIDTH + CONFIG.SLASH_HEIGHT; // ~84 pixels
         
-        if (dist < CONFIG.SWORD_RANGE * 1.5) {
+        if (dist < attackRange * 1.5) {
             // Close range - attack or dodge
             if (rand < CONFIG.AI_AGGRESSION) {
                 this.aiAction = 'attack';
+                this.aiAttackDelay = Math.floor(Math.random() * 20); // Random delay 0-20 frames
             } else {
                 this.aiAction = 'dodge';
             }
-        } else if (dist < 100) {
-            // Medium range - approach or wander
-            if (rand < CONFIG.AI_AGGRESSION) {
+        } else if (dist < 150) {
+            // Medium range - approach and maybe attack
+            if (rand < CONFIG.AI_AGGRESSION * 0.8) {
                 this.aiAction = 'chase';
             } else if (rand < 0.7) {
-                this.aiAction = 'wander';
+                this.aiAction = 'attack'; // Sometimes attack from range
+                this.aiAttackDelay = Math.floor(Math.random() * 15);
             } else {
-                this.aiAction = 'idle';
-                this.aiIdleTimer = CONFIG.AI_IDLE_TIME;
+                this.aiAction = 'wander';
             }
         } else {
             // Far - wander or chase
             if (rand < CONFIG.AI_WANDER_CHANCE) {
                 this.aiAction = 'wander';
-            } else if (rand < 0.6) {
+            } else if (rand < 0.7) {
                 this.aiAction = 'chase';
             } else {
                 this.aiAction = 'idle';
