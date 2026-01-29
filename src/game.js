@@ -491,6 +491,49 @@ function playRespawnSound() {
     noise.start(now + 0.05);
 }
 
+// Dash bump/ricochet sound - pinball bumper style
+function playBumperSound() {
+    if (!AUDIO.ctx) initAudio();
+    const ctx = AUDIO.ctx;
+    const now = ctx.currentTime;
+    
+    // Sharp attack with pitch bend (pinball bumper)
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(800, now);
+    osc1.frequency.exponentialRampToValueAtTime(200, now + 0.15);
+    gain1.gain.setValueAtTime(0.4, now);
+    gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+    osc1.connect(gain1).connect(ctx.destination);
+    osc1.start(now);
+    osc1.stop(now + 0.15);
+    
+    // Bright high harmonic
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = 'triangle';
+    osc2.frequency.setValueAtTime(1600, now);
+    osc2.frequency.exponentialRampToValueAtTime(600, now + 0.08);
+    gain2.gain.setValueAtTime(0.25, now);
+    gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+    osc2.connect(gain2).connect(ctx.destination);
+    osc2.start(now);
+    osc2.stop(now + 0.1);
+    
+    // Punchy low thud
+    const osc3 = ctx.createOscillator();
+    const gain3 = ctx.createGain();
+    osc3.type = 'sine';
+    osc3.frequency.setValueAtTime(150, now);
+    osc3.frequency.exponentialRampToValueAtTime(60, now + 0.1);
+    gain3.gain.setValueAtTime(0.3, now);
+    gain3.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+    osc3.connect(gain3).connect(ctx.destination);
+    osc3.start(now);
+    osc3.stop(now + 0.1);
+}
+
 // =============================================================================
 // PIXEL ART DRAWING FUNCTIONS
 // =============================================================================
@@ -1121,8 +1164,8 @@ class Player {
             this.dash();
         }
         
-        // Sword slash (Z key) - 4 directional based on arrow keys
-        if ((keysJustPressed['KeyZ'] || keysJustPressed['KeyJ']) && this.slashCooldown <= 0) {
+        // Sword slash (Z key) - 4 directional based on arrow keys (not while dashing)
+        if ((keysJustPressed['KeyZ'] || keysJustPressed['KeyJ']) && this.slashCooldown <= 0 && !this.dashing) {
             // Determine slash direction from arrow keys
             const up = keys['ArrowUp'] || keys['KeyW'];
             const down = keys['ArrowDown'] || keys['KeyS'];
@@ -1648,6 +1691,80 @@ class Player {
                 const overlapX = Math.min(this.x + this.w - other.x, other.x + other.w - this.x);
                 const overlapY = Math.min(this.y + this.h - other.y, other.y + other.h - this.y);
                 
+                // Check for dash collision
+                const thisDashing = this.dashing;
+                const otherDashing = other.dashing;
+                const collisionX = (this.x + other.x) / 2 + this.w / 2;
+                const collisionY = (this.y + other.y) / 2 + this.h / 2;
+                
+                // Both dashing and facing each other = ricochet
+                if (thisDashing && otherDashing) {
+                    const facingEachOther = (this.dashDir === 1 && other.dashDir === -1 && this.x < other.x) ||
+                                           (this.dashDir === -1 && other.dashDir === 1 && this.x > other.x);
+                    
+                    if (facingEachOther) {
+                        // Dash ricochet! Both bounce away
+                        const bounceSpeed = 14;
+                        const bounceUp = -6;
+                        
+                        if (this.x < other.x) {
+                            this.x = other.x - this.w;
+                            this.vx = -bounceSpeed;
+                            other.vx = bounceSpeed;
+                        } else {
+                            this.x = other.x + other.w;
+                            this.vx = bounceSpeed;
+                            other.vx = -bounceSpeed;
+                        }
+                        this.vy = bounceUp;
+                        other.vy = bounceUp;
+                        
+                        // Cancel both dashes
+                        this.dashing = false;
+                        other.dashing = false;
+                        
+                        // Movement lock for both (~0.15 sec = 9 frames)
+                        this.movementLockTimer = 9;
+                        other.movementLockTimer = 9;
+                        
+                        // VFX and SFX
+                        spawnDashBumpParticles(collisionX, collisionY);
+                        playBumperSound();
+                        state.screenShake = 12;
+                        
+                        continue; // Skip normal collision handling
+                    }
+                }
+                
+                // One dashing into non-dashing = bump
+                if (thisDashing && !otherDashing) {
+                    const bumpSpeed = 10;
+                    const bumpUp = -5;
+                    const pushDir = this.x < other.x ? 1 : -1;
+                    
+                    // Bump the other player
+                    other.vx = pushDir * bumpSpeed;
+                    other.vy = bumpUp;
+                    other.movementLockTimer = 9; // ~0.15 sec
+                    
+                    // Slight recoil for dasher
+                    this.vx *= 0.5;
+                    
+                    // Separate them
+                    if (this.x < other.x) {
+                        other.x = this.x + this.w + 2;
+                    } else {
+                        other.x = this.x - other.w - 2;
+                    }
+                    
+                    // Small particle burst
+                    spawnParticles(collisionX, collisionY, 8, '#fff');
+                    state.screenShake = 5;
+                    
+                    continue; // Skip normal collision handling
+                }
+                
+                // Normal collision (neither dashing, or other is dashing into this)
                 if (overlapY < overlapX) {
                     // Vertical collision - check for bop
                     if (this.y < other.y && this.vy > 0) {
@@ -2393,6 +2510,55 @@ function drawDashEchoes(ctx) {
         }
     }
     ctx.globalAlpha = 1;
+}
+
+// =============================================================================
+// DASH BUMP/RICOCHET EFFECTS
+// =============================================================================
+
+function spawnDashBumpParticles(x, y) {
+    // Bright center flash
+    state.particles.push({
+        x, y,
+        vx: 0, vy: 0,
+        life: 15,
+        color: '#fff',
+        size: 20,
+        isFlash: true,
+    });
+    
+    // Radial burst - fast expanding ring of sparks
+    const sparkCount = 24;
+    for (let i = 0; i < sparkCount; i++) {
+        const angle = (i / sparkCount) * Math.PI * 2;
+        const speed = 8 + Math.random() * 6;
+        state.particles.push({
+            x: x + (Math.random() - 0.5) * 4,
+            y: y + (Math.random() - 0.5) * 4,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            life: 12 + Math.random() * 8,
+            color: Math.random() < 0.5 ? '#fff' : '#88eeff',
+            size: 3 + Math.random() * 2,
+            gravity: 0.05,
+            trail: true,
+        });
+    }
+    
+    // Inner burst - slightly slower
+    for (let i = 0; i < 12; i++) {
+        const angle = (i / 12) * Math.PI * 2 + Math.PI / 12;
+        const speed = 4 + Math.random() * 4;
+        state.particles.push({
+            x, y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed - 1,
+            life: 18 + Math.random() * 10,
+            color: '#aaeeff',
+            size: 2 + Math.random() * 2,
+            gravity: 0.15,
+        });
+    }
 }
 
 // =============================================================================
