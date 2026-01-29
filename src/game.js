@@ -571,6 +571,7 @@ const state = {
     platforms: [],
     currentLevel: '',
     currentLevelIndex: 0,
+    verticalWrap: false,
     screenShake: 0,
     round: 1,
     paused: false,
@@ -589,6 +590,7 @@ const state = {
 const LEVELS = [
     {
         name: 'Dojo',
+        verticalWrap: false,
         platforms: (W, H) => [
             { x: 0, y: H - 32, w: W, h: 32 },           // Ground
             { x: 0, y: 0, w: 32, h: H - 32 },           // Left wall
@@ -602,6 +604,7 @@ const LEVELS = [
     },
     {
         name: 'Tower',
+        verticalWrap: false,
         platforms: (W, H) => [
             { x: 0, y: H - 32, w: W, h: 32 },           // Ground
             { x: 0, y: 0, w: 32, h: H - 32 },           // Left wall
@@ -616,11 +619,12 @@ const LEVELS = [
     },
     {
         name: 'Pit',
+        verticalWrap: true, // Fall off bottom, appear at top
         platforms: (W, H) => [
             { x: 0, y: H - 32, w: 200, h: 32 },         // Left ground
             { x: W - 200, y: H - 32, w: 200, h: 32 },   // Right ground
-            { x: 0, y: 0, w: 32, h: H - 32 },           // Left wall
-            { x: W - 32, y: 0, w: 32, h: H - 32 },      // Right wall
+            { x: 0, y: 0, w: 32, h: H },                // Left wall (full height)
+            { x: W - 32, y: 0, w: 32, h: H },           // Right wall (full height)
             { x: W/2 - 50, y: H - 80, w: 100, h: 16 },  // Pit bridge
             { x: 80, y: H - 150, w: 100, h: 16 },
             { x: W - 180, y: H - 150, w: 100, h: 16 },
@@ -631,6 +635,7 @@ const LEVELS = [
     },
     {
         name: 'Scattered',
+        verticalWrap: false,
         platforms: (W, H) => [
             { x: 0, y: H - 32, w: W, h: 32 },           // Ground
             { x: 0, y: 0, w: 32, h: H - 32 },           // Left wall
@@ -656,6 +661,7 @@ function createStage(levelIndex) {
     const level = LEVELS[idx];
     state.currentLevel = level.name;
     state.currentLevelIndex = idx;
+    state.verticalWrap = level.verticalWrap || false;
     state.platforms = level.platforms(W, H);
     
     // Set background video for this level
@@ -1342,8 +1348,19 @@ class Player {
             }
         }
         
-        // Keep in bounds
+        // Keep in bounds horizontally
         this.x = Math.max(0, Math.min(CONFIG.WIDTH - this.w, this.x));
+        
+        // Vertical wrapping (for Pit level)
+        if (state.verticalWrap) {
+            if (this.y > CONFIG.HEIGHT) {
+                // Fell off bottom - wrap to top
+                this.y = -this.h;
+            } else if (this.y + this.h < 0) {
+                // Went off top - wrap to bottom
+                this.y = CONFIG.HEIGHT;
+            }
+        }
     }
     
     collides(rect) {
