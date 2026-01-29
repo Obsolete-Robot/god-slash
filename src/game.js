@@ -678,6 +678,183 @@ function playFightSound() {
 }
 
 // =============================================================================
+// MATCH OUTRO SOUNDS
+// =============================================================================
+
+// Heavy letter slam sound
+function playLetterSlamSound() {
+    if (!AUDIO.ctx) initAudio();
+    const ctx = AUDIO.ctx;
+    const now = ctx.currentTime;
+    
+    // Heavy impact
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(120, now);
+    osc.frequency.exponentialRampToValueAtTime(40, now + 0.2);
+    gain.gain.setValueAtTime(0.4, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.25);
+    
+    // Impact noise
+    const bufferSize = ctx.sampleRate * 0.1;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 2);
+    }
+    const noise = ctx.createBufferSource();
+    const noiseGain = ctx.createGain();
+    noise.buffer = buffer;
+    noiseGain.gain.setValueAtTime(0.25, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+    noise.connect(noiseGain).connect(ctx.destination);
+    noise.start(now);
+}
+
+// Typewriter tick for message text
+function playTypeSound() {
+    if (!AUDIO.ctx) initAudio();
+    const ctx = AUDIO.ctx;
+    const now = ctx.currentTime;
+    
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(1200, now);
+    gain.gain.setValueAtTime(0.08, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.02);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.03);
+}
+
+// Victory fanfare - triumphant
+function playVictorySound() {
+    if (!AUDIO.ctx) initAudio();
+    const ctx = AUDIO.ctx;
+    const now = ctx.currentTime;
+    
+    // Triumphant chord - root
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = 'sawtooth';
+    osc1.frequency.setValueAtTime(220, now);
+    gain1.gain.setValueAtTime(0.2, now);
+    gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
+    osc1.connect(gain1).connect(ctx.destination);
+    osc1.start(now);
+    osc1.stop(now + 0.8);
+    
+    // Major third
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = 'sawtooth';
+    osc2.frequency.setValueAtTime(277, now);
+    gain2.gain.setValueAtTime(0.15, now);
+    gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.7);
+    osc2.connect(gain2).connect(ctx.destination);
+    osc2.start(now);
+    osc2.stop(now + 0.7);
+    
+    // Fifth
+    const osc3 = ctx.createOscillator();
+    const gain3 = ctx.createGain();
+    osc3.type = 'sawtooth';
+    osc3.frequency.setValueAtTime(330, now);
+    gain3.gain.setValueAtTime(0.15, now);
+    gain3.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
+    osc3.connect(gain3).connect(ctx.destination);
+    osc3.start(now);
+    osc3.stop(now + 0.6);
+    
+    // High octave
+    const osc4 = ctx.createOscillator();
+    const gain4 = ctx.createGain();
+    osc4.type = 'triangle';
+    osc4.frequency.setValueAtTime(440, now);
+    gain4.gain.setValueAtTime(0.2, now);
+    gain4.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+    osc4.connect(gain4).connect(ctx.destination);
+    osc4.start(now);
+    osc4.stop(now + 0.5);
+    
+    // Impact
+    const osc5 = ctx.createOscillator();
+    const gain5 = ctx.createGain();
+    osc5.type = 'sine';
+    osc5.frequency.setValueAtTime(150, now);
+    osc5.frequency.exponentialRampToValueAtTime(50, now + 0.3);
+    gain5.gain.setValueAtTime(0.35, now);
+    gain5.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+    osc5.connect(gain5).connect(ctx.destination);
+    osc5.start(now);
+    osc5.stop(now + 0.3);
+}
+
+// Game over somber tone
+function playGameOverSound() {
+    if (!AUDIO.ctx) initAudio();
+    const ctx = AUDIO.ctx;
+    const now = ctx.currentTime;
+    
+    // Descending minor - somber
+    const notes = [220, 196, 165, 147]; // A3 -> G3 -> E3 -> D3
+    notes.forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, now + i * 0.15);
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.2, now + i * 0.15);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + i * 0.15 + 0.4);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(now + i * 0.15);
+        osc.stop(now + i * 0.15 + 0.5);
+    });
+}
+
+// Prompt appear sound
+function playPromptSound() {
+    if (!AUDIO.ctx) initAudio();
+    const ctx = AUDIO.ctx;
+    const now = ctx.currentTime;
+    
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(600, now);
+    osc.frequency.setValueAtTime(800, now + 0.05);
+    gain.gain.setValueAtTime(0.2, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.15);
+}
+
+// Confirm/restart sound
+function playConfirmSound() {
+    if (!AUDIO.ctx) initAudio();
+    const ctx = AUDIO.ctx;
+    const now = ctx.currentTime;
+    
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(440, now);
+    osc.frequency.setValueAtTime(660, now + 0.08);
+    osc.frequency.setValueAtTime(880, now + 0.16);
+    gain.gain.setValueAtTime(0.15, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.3);
+}
+
+// =============================================================================
 // VISUAL EFFECTS - Drawing Functions
 // =============================================================================
 
@@ -908,6 +1085,21 @@ const state = {
     
     // Game over state (prevents multiple reset triggers)
     gameOverPending: false,
+    
+    // Match outro state (game over / victory)
+    outroActive: false,
+    outroType: 'none', // 'gameover', 'victory', 'none'
+    outroPhase: 'none',
+    outroTimer: 0,
+    outroData: {
+        lettersSlammed: 0,      // How many letters have slammed in
+        fadeAlpha: 0,           // Screen fade to black
+        messageLetters: 0,      // Typewriter effect for message
+        promptVisible: false,   // Show X prompt
+        promptBlink: 0,         // Blink timer for prompt
+        victoryScale: 0,        // Victory text scale
+        echoScales: [],         // Victory echo scales
+    },
 };
 
 // =============================================================================
@@ -2869,6 +3061,346 @@ function isIntroBlocking() {
 }
 
 // =============================================================================
+// MATCH OUTRO SYSTEM (Game Over / Victory)
+// =============================================================================
+
+const OUTRO_TIMING = {
+    LETTER_SLAM_DELAY: 8,       // Frames between each letter slam
+    FADE_DURATION: 40,          // Frames to fade to black
+    MESSAGE_LETTER_DELAY: 3,    // Frames between message letters
+    MESSAGE_HOLD: 60,           // Hold after message complete
+    PROMPT_DELAY: 30,           // Delay before showing prompt
+    VICTORY_SLAM_DURATION: 15,  // Victory text slam-in
+    ECHO_INTERVAL: 8,           // Frames between victory echoes
+    ECHO_COUNT: 5,              // Number of echo rings
+};
+
+const OUTRO_MESSAGES = {
+    gameover: 'A GOD CAN NEVER TRULY DIE...',
+    victory: 'ONWARD TO THE NEXT BATTLE',
+};
+
+const OUTRO_PROMPTS = {
+    gameover: 'Rise Again?',
+    victory: 'Continue',
+};
+
+function startOutro(type) {
+    state.outroActive = true;
+    state.outroType = type;
+    state.outroPhase = type === 'gameover' ? 'letters' : 'slam';
+    state.outroTimer = 0;
+    state.outroData = {
+        lettersSlammed: 0,
+        fadeAlpha: 0,
+        messageLetters: 0,
+        promptVisible: false,
+        promptBlink: 0,
+        victoryScale: 0,
+        echoScales: [],
+    };
+    
+    if (type === 'gameover') {
+        playGameOverSound();
+    } else {
+        playVictorySound();
+    }
+}
+
+function updateOutro() {
+    if (!state.outroActive) return;
+    
+    state.outroTimer++;
+    const d = state.outroData;
+    const type = state.outroType;
+    
+    // Handle X key press to restart
+    if (d.promptVisible && (keysJustPressed['KeyX'] || keysJustPressed['KeyK'])) {
+        playConfirmSound();
+        state.outroActive = false;
+        state.outroPhase = 'none';
+        state.round++;
+        resetMatch();
+        return;
+    }
+    
+    if (type === 'gameover') {
+        updateGameOverOutro();
+    } else {
+        updateVictoryOutro();
+    }
+    
+    // Blink prompt
+    if (d.promptVisible) {
+        d.promptBlink++;
+    }
+}
+
+function updateGameOverOutro() {
+    const d = state.outroData;
+    const title = 'GAME OVER';
+    const message = OUTRO_MESSAGES.gameover;
+    
+    switch (state.outroPhase) {
+        case 'letters':
+            // Slam letters one by one
+            const letterIndex = Math.floor(state.outroTimer / OUTRO_TIMING.LETTER_SLAM_DELAY);
+            if (letterIndex > d.lettersSlammed && letterIndex <= title.length) {
+                d.lettersSlammed = letterIndex;
+                if (title[letterIndex - 1] !== ' ') {
+                    playLetterSlamSound();
+                    state.screenShake = 8;
+                }
+            }
+            
+            // Start fading
+            d.fadeAlpha = Math.min(0.7, state.outroTimer / 60 * 0.7);
+            
+            if (state.outroTimer >= title.length * OUTRO_TIMING.LETTER_SLAM_DELAY + 30) {
+                state.outroPhase = 'message';
+                state.outroTimer = 0;
+            }
+            break;
+            
+        case 'message':
+            // Type out message
+            const msgIndex = Math.floor(state.outroTimer / OUTRO_TIMING.MESSAGE_LETTER_DELAY);
+            if (msgIndex > d.messageLetters && msgIndex <= message.length) {
+                d.messageLetters = msgIndex;
+                if (message[msgIndex - 1] !== ' ' && message[msgIndex - 1] !== '.') {
+                    playTypeSound();
+                }
+            }
+            
+            if (state.outroTimer >= message.length * OUTRO_TIMING.MESSAGE_LETTER_DELAY + OUTRO_TIMING.MESSAGE_HOLD) {
+                state.outroPhase = 'prompt';
+                state.outroTimer = 0;
+            }
+            break;
+            
+        case 'prompt':
+            if (state.outroTimer >= OUTRO_TIMING.PROMPT_DELAY && !d.promptVisible) {
+                d.promptVisible = true;
+                playPromptSound();
+            }
+            break;
+    }
+}
+
+function updateVictoryOutro() {
+    const d = state.outroData;
+    const message = OUTRO_MESSAGES.victory;
+    
+    switch (state.outroPhase) {
+        case 'slam':
+            // Victory slams in with elastic
+            const slamProgress = Math.min(1, state.outroTimer / OUTRO_TIMING.VICTORY_SLAM_DURATION);
+            const elastic = 1 - Math.pow(2, -10 * slamProgress) * Math.cos(slamProgress * Math.PI * 3);
+            d.victoryScale = elastic;
+            
+            if (state.outroTimer === 1) {
+                state.screenShake = 15;
+            }
+            
+            // Spawn echo rings
+            if (state.outroTimer % OUTRO_TIMING.ECHO_INTERVAL === 0 && d.echoScales.length < OUTRO_TIMING.ECHO_COUNT) {
+                d.echoScales.push(1);
+            }
+            
+            // Expand echoes
+            for (let i = 0; i < d.echoScales.length; i++) {
+                d.echoScales[i] += 0.08;
+            }
+            
+            // Fade background
+            d.fadeAlpha = Math.min(0.5, state.outroTimer / 60 * 0.5);
+            
+            if (state.outroTimer >= OUTRO_TIMING.VICTORY_SLAM_DURATION + 50) {
+                state.outroPhase = 'message';
+                state.outroTimer = 0;
+            }
+            break;
+            
+        case 'message':
+            // Continue expanding echoes
+            for (let i = 0; i < d.echoScales.length; i++) {
+                d.echoScales[i] += 0.02;
+            }
+            
+            // Type out message
+            const msgIndex = Math.floor(state.outroTimer / OUTRO_TIMING.MESSAGE_LETTER_DELAY);
+            if (msgIndex > d.messageLetters && msgIndex <= message.length) {
+                d.messageLetters = msgIndex;
+                if (message[msgIndex - 1] !== ' ') {
+                    playTypeSound();
+                }
+            }
+            
+            if (state.outroTimer >= message.length * OUTRO_TIMING.MESSAGE_LETTER_DELAY + OUTRO_TIMING.MESSAGE_HOLD) {
+                state.outroPhase = 'prompt';
+                state.outroTimer = 0;
+            }
+            break;
+            
+        case 'prompt':
+            // Keep echoes expanding slowly
+            for (let i = 0; i < d.echoScales.length; i++) {
+                d.echoScales[i] += 0.01;
+            }
+            
+            if (state.outroTimer >= OUTRO_TIMING.PROMPT_DELAY && !d.promptVisible) {
+                d.promptVisible = true;
+                playPromptSound();
+            }
+            break;
+    }
+}
+
+function drawOutro(ctx) {
+    if (!state.outroActive) return;
+    
+    const d = state.outroData;
+    const centerX = CONFIG.WIDTH / 2;
+    const centerY = CONFIG.HEIGHT / 2;
+    
+    ctx.save();
+    
+    // Fade overlay
+    ctx.fillStyle = `rgba(0, 0, 0, ${d.fadeAlpha})`;
+    ctx.fillRect(0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
+    
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    if (state.outroType === 'gameover') {
+        drawGameOverOutro(ctx, centerX, centerY);
+    } else {
+        drawVictoryOutro(ctx, centerX, centerY);
+    }
+    
+    ctx.restore();
+}
+
+function drawGameOverOutro(ctx, centerX, centerY) {
+    const d = state.outroData;
+    const title = 'GAME OVER';
+    const message = OUTRO_MESSAGES.gameover;
+    const prompt = OUTRO_PROMPTS.gameover;
+    
+    // Draw GAME OVER letters
+    ctx.font = 'bold 56px "Press Start 2P", monospace';
+    ctx.shadowColor = '#000';
+    ctx.shadowBlur = 10;
+    ctx.shadowOffsetX = 4;
+    ctx.shadowOffsetY = 4;
+    
+    const letterWidth = 45;
+    const startX = centerX - (title.length * letterWidth) / 2 + letterWidth / 2;
+    
+    for (let i = 0; i < d.lettersSlammed; i++) {
+        const char = title[i];
+        const x = startX + i * letterWidth;
+        
+        // Letters slam from above
+        const slamProgress = Math.min(1, (state.outroTimer - i * OUTRO_TIMING.LETTER_SLAM_DELAY) / 8);
+        const y = centerY - 60 + (slamProgress < 1 ? (1 - slamProgress) * -100 : 0);
+        const scale = slamProgress < 1 ? 0.5 + slamProgress * 0.5 : 1;
+        
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(scale, scale);
+        ctx.fillStyle = '#c00';
+        ctx.fillText(char, 0, 0);
+        ctx.restore();
+    }
+    
+    // Draw message
+    if (state.outroPhase === 'message' || state.outroPhase === 'prompt') {
+        const visibleMessage = message.substring(0, d.messageLetters);
+        ctx.font = '18px "Press Start 2P", monospace';
+        ctx.fillStyle = '#888';
+        ctx.shadowBlur = 0;
+        ctx.fillText(visibleMessage, centerX, centerY + 20);
+    }
+    
+    // Draw prompt
+    if (d.promptVisible) {
+        const blink = Math.floor(d.promptBlink / 20) % 2 === 0;
+        if (blink) {
+            ctx.font = '24px "Press Start 2P", monospace';
+            ctx.fillStyle = '#fff';
+            ctx.fillText(prompt, centerX, centerY + 80);
+            
+            ctx.font = '14px "Press Start 2P", monospace';
+            ctx.fillStyle = '#fbbf24';
+            ctx.fillText('[ Press X ]', centerX, centerY + 115);
+        }
+    }
+}
+
+function drawVictoryOutro(ctx, centerX, centerY) {
+    const d = state.outroData;
+    const message = OUTRO_MESSAGES.victory;
+    const prompt = OUTRO_PROMPTS.victory;
+    
+    // Draw echo rings
+    for (let i = 0; i < d.echoScales.length; i++) {
+        const scale = d.echoScales[i];
+        const alpha = Math.max(0, 1 - (scale - 1) / 2);
+        
+        ctx.save();
+        ctx.globalAlpha = alpha * 0.5;
+        ctx.font = `bold ${Math.floor(64 * scale)}px "Press Start 2P", monospace`;
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = 2;
+        ctx.strokeText('VICTORY', centerX, centerY - 40);
+        ctx.restore();
+    }
+    
+    // Draw main VICTORY text
+    if (d.victoryScale > 0) {
+        ctx.save();
+        ctx.font = `bold ${Math.floor(64 * d.victoryScale)}px "Press Start 2P", monospace`;
+        ctx.shadowColor = '#fbbf24';
+        ctx.shadowBlur = 20;
+        ctx.fillStyle = '#fbbf24';
+        ctx.fillText('VICTORY', centerX, centerY - 40);
+        
+        // White core
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#fff';
+        ctx.font = `bold ${Math.floor(60 * d.victoryScale)}px "Press Start 2P", monospace`;
+        ctx.fillText('VICTORY', centerX, centerY - 40);
+        ctx.restore();
+    }
+    
+    // Draw message
+    if (state.outroPhase === 'message' || state.outroPhase === 'prompt') {
+        const visibleMessage = message.substring(0, d.messageLetters);
+        ctx.font = '16px "Press Start 2P", monospace';
+        ctx.fillStyle = '#fff';
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 5;
+        ctx.fillText(visibleMessage, centerX, centerY + 30);
+    }
+    
+    // Draw prompt
+    if (d.promptVisible) {
+        const blink = Math.floor(d.promptBlink / 20) % 2 === 0;
+        if (blink) {
+            ctx.font = '24px "Press Start 2P", monospace';
+            ctx.fillStyle = '#fff';
+            ctx.shadowBlur = 0;
+            ctx.fillText(prompt, centerX, centerY + 90);
+            
+            ctx.font = '14px "Press Start 2P", monospace';
+            ctx.fillStyle = '#fbbf24';
+            ctx.fillText('[ Press X ]', centerX, centerY + 125);
+        }
+    }
+}
+
+// =============================================================================
 // UI
 // =============================================================================
 
@@ -2931,17 +3463,13 @@ function hideMessage() {
 
 function checkGameOver() {
     // Prevent multiple triggers
-    if (state.gameOverPending) return;
+    if (state.gameOverPending || state.outroActive) return;
     
     // Check if player is out of lives
     const player = state.players[0];
     if (player.lives <= 0) {
         state.gameOverPending = true;
-        showMessage('GAME OVER', 180);
-        setTimeout(() => {
-            state.round++;
-            resetMatch();
-        }, 3000);
+        startOutro('gameover');
         return;
     }
     
@@ -2949,11 +3477,7 @@ function checkGameOver() {
     const aliveEnemies = state.players.slice(1).filter(p => p.lives > 0);
     if (aliveEnemies.length === 0) {
         state.gameOverPending = true;
-        showMessage('YOU WIN!', 180);
-        setTimeout(() => {
-            state.round++;
-            resetMatch();
-        }, 3000);
+        startOutro('victory');
     }
 }
 
@@ -3032,6 +3556,13 @@ function update() {
     // Update match intro
     if (state.introActive) {
         updateIntro();
+    }
+    
+    // Update match outro
+    if (state.outroActive) {
+        updateOutro();
+        clearJustPressed();
+        return; // Skip normal updates during outro
     }
     
     if (state.messageTimer > 0) {
@@ -3160,6 +3691,9 @@ function draw() {
     
     // Draw match intro overlay
     drawIntro(ctx);
+    
+    // Draw match outro overlay
+    drawOutro(ctx);
     
     // Debug overlay
     drawDebug(ctx);
