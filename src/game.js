@@ -32,13 +32,21 @@ const CONFIG = {
     SWORD_ARC: Math.PI * 0.6,
     SWORD_DURATION: 8,
     SWORD_COOLDOWN: 15,
+    HIT_STUN_DURATION: 20,
+    HIT_STUN_KNOCKBACK: 8,
+    CLASH_KNOCKBACK: 10,
+    
+    // Gun (DISABLED for now)
+    GUN_ENABLED: false,
     BULLET_SPEED: 10,
     BULLET_COUNT: 3,
     GUN_COOLDOWN: 20,
     
     // AI
-    AI_REACTION_TIME: 10,
-    AI_AGGRESSION: 0.7,
+    AI_REACTION_TIME: 15,
+    AI_AGGRESSION: 0.5,
+    AI_WANDER_CHANCE: 0.3,
+    AI_IDLE_TIME: 60,
     
     // Game
     KILLS_TO_WIN: 5,
@@ -58,6 +66,8 @@ const COLORS = {
     sword: '#fff',
     bullet: '#ff0',
     particle: '#fff',
+    blood: '#c00',
+    bloodLight: '#f33',
 };
 
 // =============================================================================
@@ -165,16 +175,34 @@ class Player {
         this.alive = true;
         this.respawnTimer = 0;
         
+        // Hit stun
+        this.stunned = false;
+        this.stunTimer = 0;
+        
         // AI state
         this.aiTarget = null;
         this.aiDecisionTimer = 0;
         this.aiAction = 'idle';
+        this.aiWanderDir = 1;
+        this.aiIdleTimer = 0;
+        this.aiPatrolTarget = null;
     }
     
     update() {
         if (!this.alive) {
             this.respawnTimer--;
             if (this.respawnTimer <= 0) this.respawn();
+            return;
+        }
+        
+        // Update stun
+        if (this.stunned) {
+            this.stunTimer--;
+            if (this.stunTimer <= 0) {
+                this.stunned = false;
+            }
+            // Still apply physics when stunned, but no control
+            this.applyPhysics();
             return;
         }
         
@@ -249,103 +277,149 @@ class Player {
             this.slash();
         }
         
-        // Shoot
-        if ((keysJustPressed['KeyX'] || keysJustPressed['KeyK']) && this.bullets > 0 && this.gunCooldown <= 0) {
-            this.shoot();
-        }
+        // Shoot (DISABLED)
+        // if (CONFIG.GUN_ENABLED && (keysJustPressed['KeyX'] || keysJustPressed['KeyK']) && this.bullets > 0 && this.gunCooldown <= 0) {
+        //     this.shoot();
+        // }
     }
     
     updateAI() {
         const target = state.players.find(p => p !== this && p.alive);
-        if (!target) return;
-        
-        this.aiDecisionTimer--;
-        if (this.aiDecisionTimer <= 0) {
-            this.aiDecisionTimer = CONFIG.AI_REACTION_TIME + Math.random() * 10;
-            this.makeAIDecision(target);
+        if (!target) {
+            // No target - wander
+            this.aiWander();
+            return;
         }
         
-        // Execute current action
         const dx = target.x - this.x;
         const dy = target.y - this.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
         
-        // Face target
-        this.facing = dx > 0 ? 1 : -1;
+        this.aiDecisionTimer--;
+        if (this.aiDecisionTimer <= 0) {
+            this.aiDecisionTimer = CONFIG.AI_REACTION_TIME + Math.random() * 15;
+            this.makeAIDecision(target, dist);
+        }
         
+        // Execute current action
         switch (this.aiAction) {
+            case 'idle':
+                // Stand still, maybe face player
+                this.aiIdleTimer--;
+                if (this.aiIdleTimer <= 0) {
+                    this.aiAction = Math.random() < 0.5 ? 'wander' : 'chase';
+                }
+                if (dist < 80) this.facing = dx > 0 ? 1 : -1;
+                break;
+                
+            case 'wander':
+                // Move in current wander direction
+                this.vx = this.aiWanderDir * CONFIG.PLAYER_SPEED * 0.6;
+                this.facing = this.aiWanderDir;
+                
+                // Change direction at walls or randomly
+                if (this.x < 30 || this.wallDir === -1) this.aiWanderDir = 1;
+                else if (this.x > CONFIG.WIDTH - 30 || this.wallDir === 1) this.aiWanderDir = -1;
+                else if (Math.random() < 0.02) this.aiWanderDir *= -1;
+                
+                // Random jump while wandering
+                if (this.grounded && Math.random() < 0.03) {
+                    this.vy = CONFIG.PLAYER_JUMP * 0.8;
+                }
+                break;
+                
             case 'chase':
                 this.vx = Math.sign(dx) * CONFIG.PLAYER_SPEED;
-                // Jump if target is above or at edge
-                if ((dy < -30 || !this.grounded) && this.grounded) {
+                this.facing = dx > 0 ? 1 : -1;
+                
+                // Jump if target is above
+                if (dy < -40 && this.grounded) {
                     this.vy = CONFIG.PLAYER_JUMP;
                 }
-                break;
-                
-            case 'attack_sword':
-                if (dist < CONFIG.SWORD_RANGE && this.slashCooldown <= 0) {
-                    this.slash();
-                } else {
-                    this.vx = Math.sign(dx) * CONFIG.PLAYER_SPEED;
+                // Jump gaps
+                if (this.grounded && Math.random() < 0.05) {
+                    this.vy = CONFIG.PLAYER_JUMP * 0.9;
                 }
                 break;
                 
-            case 'attack_gun':
-                if (this.bullets > 0 && this.gunCooldown <= 0 && Math.abs(dy) < 30) {
-                    this.shoot();
+            case 'attack':
+                this.facing = dx > 0 ? 1 : -1;
+                if (dist < CONFIG.SWORD_RANGE * 1.2 && this.slashCooldown <= 0) {
+                    this.slash();
+                    this.aiAction = 'retreat'; // Back off after attack
+                    this.aiDecisionTimer = 20;
+                } else if (dist < CONFIG.SWORD_RANGE * 2) {
+                    // Close in for attack
+                    this.vx = Math.sign(dx) * CONFIG.PLAYER_SPEED;
                 }
                 break;
                 
             case 'retreat':
                 this.vx = -Math.sign(dx) * CONFIG.PLAYER_SPEED;
-                if (this.grounded && Math.random() < 0.1) {
-                    this.vy = CONFIG.PLAYER_JUMP;
+                this.facing = dx > 0 ? 1 : -1; // Still face player
+                if (this.grounded && Math.random() < 0.15) {
+                    this.vy = CONFIG.PLAYER_JUMP * 0.7;
                 }
                 break;
                 
             case 'dodge':
                 if (this.dashCooldown <= 0) {
-                    this.dashDir = -Math.sign(dx);
+                    this.dashDir = Math.random() < 0.5 ? 1 : -1;
                     this.dash();
+                    this.aiAction = 'idle';
+                    this.aiIdleTimer = 20;
                 }
                 break;
         }
         
         // Wall jump if sliding
-        if (this.wallSliding && Math.random() < 0.3) {
+        if (this.wallSliding && Math.random() < 0.4) {
             this.vx = CONFIG.PLAYER_WALL_JUMP_X * -this.wallDir;
             this.vy = CONFIG.PLAYER_WALL_JUMP_Y;
             this.wallSliding = false;
         }
-        
-        // React to incoming bullets
-        for (const bullet of state.bullets) {
-            if (bullet.owner === this) continue;
-            const bDist = Math.sqrt((bullet.x - this.x) ** 2 + (bullet.y - this.y) ** 2);
-            if (bDist < 50 && Math.random() < 0.5) {
-                // Try to slash deflect
-                if (this.slashCooldown <= 0) this.slash();
-                else if (this.dashCooldown <= 0) {
-                    this.dashDir = Math.random() < 0.5 ? 1 : -1;
-                    this.dash();
-                }
-            }
-        }
     }
     
-    makeAIDecision(target) {
+    aiWander() {
+        this.vx = this.aiWanderDir * CONFIG.PLAYER_SPEED * 0.5;
+        this.facing = this.aiWanderDir;
+        if (this.x < 30) this.aiWanderDir = 1;
+        else if (this.x > CONFIG.WIDTH - 30) this.aiWanderDir = -1;
+        else if (Math.random() < 0.01) this.aiWanderDir *= -1;
+        if (this.grounded && Math.random() < 0.02) this.vy = CONFIG.PLAYER_JUMP * 0.7;
+    }
+    
+    makeAIDecision(target, dist) {
         const dx = target.x - this.x;
-        const dist = Math.abs(dx);
+        const rand = Math.random();
         
         if (dist < CONFIG.SWORD_RANGE * 1.5) {
-            // Close range - sword or dodge
-            this.aiAction = Math.random() < CONFIG.AI_AGGRESSION ? 'attack_sword' : 'dodge';
-        } else if (dist < 100 && this.bullets > 0) {
-            // Medium range - shoot
-            this.aiAction = Math.random() < CONFIG.AI_AGGRESSION ? 'attack_gun' : 'chase';
+            // Close range - attack or dodge
+            if (rand < CONFIG.AI_AGGRESSION) {
+                this.aiAction = 'attack';
+            } else {
+                this.aiAction = 'dodge';
+            }
+        } else if (dist < 100) {
+            // Medium range - approach or wander
+            if (rand < CONFIG.AI_AGGRESSION) {
+                this.aiAction = 'chase';
+            } else if (rand < 0.7) {
+                this.aiAction = 'wander';
+            } else {
+                this.aiAction = 'idle';
+                this.aiIdleTimer = CONFIG.AI_IDLE_TIME;
+            }
         } else {
-            // Far - chase or shoot
-            this.aiAction = this.bullets > 0 && Math.random() < 0.3 ? 'attack_gun' : 'chase';
+            // Far - wander or chase
+            if (rand < CONFIG.AI_WANDER_CHANCE) {
+                this.aiAction = 'wander';
+            } else if (rand < 0.6) {
+                this.aiAction = 'chase';
+            } else {
+                this.aiAction = 'idle';
+                this.aiIdleTimer = CONFIG.AI_IDLE_TIME * 0.5;
+            }
         }
     }
     
@@ -386,29 +460,78 @@ class Player {
             if (other === this || !other.alive) continue;
             if (other.dashing) continue; // Dash i-frames
             
-            const dist = Math.sqrt((other.x + other.w/2 - cx) ** 2 + (other.y + other.h/2 - cy) ** 2);
+            const otherCx = other.x + other.w/2;
+            const otherCy = other.y + other.h/2;
+            const dist = Math.sqrt((otherCx - cx) ** 2 + (otherCy - cy) ** 2);
+            
             if (dist < CONFIG.SWORD_RANGE) {
-                other.die();
-                const idx = state.players.indexOf(this);
-                state.roundKills[idx]++;
-                updateUI();
-                checkWin();
+                // Check for CLASH - both players slashing
+                if (other.slashing) {
+                    // Clash! Knock both players back
+                    const knockDir = this.x < other.x ? -1 : 1;
+                    this.vx = knockDir * CONFIG.CLASH_KNOCKBACK;
+                    this.vy = -4;
+                    other.vx = -knockDir * CONFIG.CLASH_KNOCKBACK;
+                    other.vy = -4;
+                    
+                    // Clash particles
+                    const clashX = (this.x + other.x) / 2 + 6;
+                    const clashY = (this.y + other.y) / 2 + 10;
+                    spawnParticles(clashX, clashY, 15, COLORS.sword);
+                    spawnParticles(clashX, clashY, 10, COLORS.bullet);
+                    
+                    state.screenShake = 12;
+                    
+                    // Cancel both slashes
+                    this.slashing = false;
+                    other.slashing = false;
+                    this.slashCooldown = CONFIG.SWORD_COOLDOWN;
+                    other.slashCooldown = CONFIG.SWORD_COOLDOWN;
+                } else {
+                    // Hit! Apply hit stun, blood, then kill
+                    const hitX = otherCx;
+                    const hitY = otherCy;
+                    
+                    // Blood particles
+                    spawnBloodParticles(hitX, hitY, 25, this.facing);
+                    
+                    // Hit stun and knockback
+                    other.stunned = true;
+                    other.stunTimer = CONFIG.HIT_STUN_DURATION;
+                    other.vx = this.facing * CONFIG.HIT_STUN_KNOCKBACK;
+                    other.vy = -3;
+                    
+                    // Kill after brief stun (for dramatic effect)
+                    setTimeout(() => {
+                        if (other.stunned) {
+                            other.die();
+                            const idx = state.players.indexOf(this);
+                            state.roundKills[idx]++;
+                            updateUI();
+                            checkWin();
+                        }
+                    }, 150);
+                    
+                    state.screenShake = 10;
+                }
             }
         }
         
-        // Deflect bullets
-        for (let i = state.bullets.length - 1; i >= 0; i--) {
-            const b = state.bullets[i];
-            if (b.owner === this) continue;
-            
-            const dist = Math.sqrt((b.x - cx) ** 2 + (b.y - cy) ** 2);
-            if (dist < CONFIG.SWORD_RANGE) {
-                // Reflect bullet
-                b.vx = -b.vx * 1.2;
-                b.vy = (Math.random() - 0.5) * 2;
-                b.owner = this;
-                spawnParticles(b.x, b.y, 8, COLORS.bullet);
-                state.screenShake = 5;
+        // Deflect bullets (DISABLED when gun is disabled)
+        if (CONFIG.GUN_ENABLED) {
+            for (let i = state.bullets.length - 1; i >= 0; i--) {
+                const b = state.bullets[i];
+                if (b.owner === this) continue;
+                
+                const dist = Math.sqrt((b.x - cx) ** 2 + (b.y - cy) ** 2);
+                if (dist < CONFIG.SWORD_RANGE) {
+                    // Reflect bullet
+                    b.vx = -b.vx * 1.2;
+                    b.vy = (Math.random() - 0.5) * 2;
+                    b.owner = this;
+                    spawnParticles(b.x, b.y, 8, COLORS.bullet);
+                    state.screenShake = 5;
+                }
             }
         }
     }
@@ -526,14 +649,25 @@ class Player {
             ctx.globalAlpha = 0.5;
         }
         
-        // Body
-        ctx.fillStyle = this.color;
+        // Flash red when stunned
+        if (this.stunned) {
+            ctx.globalAlpha = 0.5 + Math.sin(Date.now() * 0.05) * 0.3;
+        }
+        
+        // Body (flash white when stunned)
+        ctx.fillStyle = this.stunned ? '#fff' : this.color;
         ctx.fillRect(Math.floor(this.x), Math.floor(this.y), this.w, this.h);
         
-        // Eyes (facing direction)
-        ctx.fillStyle = '#fff';
+        // Eyes (facing direction) - X eyes when stunned
+        ctx.fillStyle = this.stunned ? '#f00' : '#fff';
         const eyeX = this.x + this.w/2 + this.facing * 2;
-        ctx.fillRect(Math.floor(eyeX), Math.floor(this.y + 4), 2, 2);
+        if (this.stunned) {
+            // X eyes
+            ctx.fillRect(Math.floor(eyeX - 1), Math.floor(this.y + 3), 4, 1);
+            ctx.fillRect(Math.floor(eyeX), Math.floor(this.y + 2), 2, 4);
+        } else {
+            ctx.fillRect(Math.floor(eyeX), Math.floor(this.y + 4), 2, 2);
+        }
         
         // Draw sword when slashing
         if (this.slashing) {
@@ -564,12 +698,31 @@ function spawnParticles(x, y, count, color) {
     }
 }
 
+function spawnBloodParticles(x, y, count, direction) {
+    for (let i = 0; i < count; i++) {
+        // Blood sprays in hit direction
+        const speed = 3 + Math.random() * 6;
+        const angle = (direction > 0 ? 0 : Math.PI) + (Math.random() - 0.5) * 1.2;
+        state.particles.push({
+            x: x + (Math.random() - 0.5) * 8,
+            y: y + (Math.random() - 0.5) * 8,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed - Math.random() * 3,
+            life: 30 + Math.random() * 30,
+            color: Math.random() < 0.7 ? COLORS.blood : COLORS.bloodLight,
+            size: 2 + Math.random() * 3,
+            gravity: 0.3, // Blood falls faster
+        });
+    }
+}
+
 function updateParticles() {
     for (let i = state.particles.length - 1; i >= 0; i--) {
         const p = state.particles[i];
         p.x += p.vx;
         p.y += p.vy;
-        p.vy += 0.2;
+        p.vy += p.gravity || 0.2; // Use custom gravity if set
+        p.vx *= 0.99; // Slight air resistance
         p.life--;
         if (p.life <= 0) state.particles.splice(i, 1);
     }
@@ -672,13 +825,17 @@ function drawSlashEffects(ctx) {
 function updateUI() {
     document.getElementById('p1-kills').textContent = state.roundKills[0];
     document.getElementById('p2-kills').textContent = state.roundKills[1];
-    
-    const p1 = state.players[0];
-    const p2 = state.players[1];
-    
-    document.getElementById('p1-bullets').textContent = '●'.repeat(p1?.bullets || 0) + '○'.repeat(CONFIG.BULLET_COUNT - (p1?.bullets || 0));
-    document.getElementById('p2-bullets').textContent = '●'.repeat(p2?.bullets || 0) + '○'.repeat(CONFIG.BULLET_COUNT - (p2?.bullets || 0));
     document.getElementById('round-info').textContent = `ROUND ${state.round}`;
+    
+    // Bullet UI (only if gun enabled)
+    if (CONFIG.GUN_ENABLED) {
+        const p1 = state.players[0];
+        const p2 = state.players[1];
+        const p1Bullets = document.getElementById('p1-bullets');
+        const p2Bullets = document.getElementById('p2-bullets');
+        if (p1Bullets) p1Bullets.textContent = '●'.repeat(p1?.bullets || 0) + '○'.repeat(CONFIG.BULLET_COUNT - (p1?.bullets || 0));
+        if (p2Bullets) p2Bullets.textContent = '●'.repeat(p2?.bullets || 0) + '○'.repeat(CONFIG.BULLET_COUNT - (p2?.bullets || 0));
+    }
 }
 
 function showMessage(text, duration = 120) {
