@@ -52,6 +52,10 @@ const CONFIG = {
     BOP_PUSH_DOWN: 4.8,
     PUSH_FORCE: 1.6,
     
+    // Air Slash
+    AIR_SLASH_FRICTION: 0.85, // Horizontal slowdown when slashing in air
+    AIR_SLASH_FALL_MULT: 0.5, // Gravity multiplier when slashing in air
+    
     // AI (tuned to 80% feel)
     AI_REACTION_TIME: 19,
     AI_AGGRESSION: 0.5,
@@ -76,13 +80,14 @@ const CONFIG = {
 // Tunable settings (subset of CONFIG that can be adjusted in debug panel)
 const TUNABLE_KEYS = [
     'GRAVITY', 'MAX_FALL_SPEED', 'FRICTION',
-    'PLAYER_SPEED', 'PLAYER_JUMP', 'PLAYER_DOUBLE_JUMP_MULT',
+    'PLAYER_SPEED', 'PLAYER_JUMP',
     'PLAYER_WALL_SLIDE', 'PLAYER_WALL_JUMP_X', 'PLAYER_WALL_JUMP_Y',
     'PLAYER_DASH_SPEED', 'PLAYER_DASH_DURATION', 'PLAYER_DASH_COOLDOWN', 'PLAYER_FAST_FALL',
     'SLASH_WIDTH', 'SLASH_HEIGHT', 'SWORD_DURATION', 'SWORD_COOLDOWN',
     'SURFACE_DEFLECT_SPEED', 'HIT_STUN_DURATION', 'HIT_STUN_KNOCKBACK', 'CLASH_KNOCKBACK',
     'GROUND_SLASH_BOUNCE', 'WALL_SLASH_DELAY', 'HIT_STOP_DURATION', 'CLASH_HIT_STOP_DURATION',
     'BOP_BOUNCE_UP', 'BOP_PUSH_DOWN', 'PUSH_FORCE',
+    'AIR_SLASH_FRICTION', 'AIR_SLASH_FALL_MULT',
     'AI_REACTION_TIME', 'AI_AGGRESSION', 'AI_WANDER_CHANCE', 'AI_IDLE_TIME',
     'LIVES_PER_CHARACTER', 'RESPAWN_TIME', 'ENEMY_COUNT',
 ];
@@ -608,8 +613,9 @@ function buildDebugPanel() {
     // Group settings by category
     const categories = {
         'Physics': ['GRAVITY', 'MAX_FALL_SPEED', 'FRICTION'],
-        'Movement': ['PLAYER_SPEED', 'PLAYER_JUMP', 'PLAYER_DOUBLE_JUMP_MULT', 'PLAYER_WALL_SLIDE', 'PLAYER_WALL_JUMP_X', 'PLAYER_WALL_JUMP_Y', 'PLAYER_DASH_SPEED', 'PLAYER_DASH_DURATION', 'PLAYER_DASH_COOLDOWN', 'PLAYER_FAST_FALL'],
+        'Movement': ['PLAYER_SPEED', 'PLAYER_JUMP', 'PLAYER_WALL_SLIDE', 'PLAYER_WALL_JUMP_X', 'PLAYER_WALL_JUMP_Y', 'PLAYER_DASH_SPEED', 'PLAYER_DASH_DURATION', 'PLAYER_DASH_COOLDOWN', 'PLAYER_FAST_FALL'],
         'Combat': ['SLASH_WIDTH', 'SLASH_HEIGHT', 'SWORD_DURATION', 'SWORD_COOLDOWN', 'SURFACE_DEFLECT_SPEED', 'HIT_STUN_DURATION', 'HIT_STUN_KNOCKBACK', 'CLASH_KNOCKBACK', 'GROUND_SLASH_BOUNCE', 'WALL_SLASH_DELAY'],
+        'Air Slash': ['AIR_SLASH_FRICTION', 'AIR_SLASH_FALL_MULT'],
         'Hit Stop': ['HIT_STOP_DURATION', 'CLASH_HIT_STOP_DURATION'],
         'Collision': ['BOP_BOUNCE_UP', 'BOP_PUSH_DOWN', 'PUSH_FORCE'],
         'AI': ['AI_REACTION_TIME', 'AI_AGGRESSION', 'AI_WANDER_CHANCE', 'AI_IDLE_TIME'],
@@ -713,14 +719,15 @@ const state = {
 // =============================================================================
 
 // Level configurations
+// solid: true = full collision (walls, floor), false/undefined = jump-through platform
 const LEVELS = [
     {
         name: 'Dojo',
         verticalWrap: false,
         platforms: (W, H) => [
-            { x: 0, y: H - 32, w: W, h: 32 },           // Ground
-            { x: 0, y: 0, w: 32, h: H - 32 },           // Left wall
-            { x: W - 32, y: 0, w: 32, h: H - 32 },      // Right wall
+            { x: 0, y: H - 32, w: W, h: 32, solid: true },           // Ground
+            { x: 0, y: 0, w: 32, h: H - 32, solid: true },           // Left wall
+            { x: W - 32, y: 0, w: 32, h: H - 32, solid: true },      // Right wall
             { x: 120, y: H - 140, w: 120, h: 16 },
             { x: W - 240, y: H - 140, w: 120, h: 16 },
             { x: W/2 - 80, y: H - 220, w: 160, h: 16 },
@@ -732,26 +739,26 @@ const LEVELS = [
         name: 'Tower',
         verticalWrap: false,
         platforms: (W, H) => [
-            { x: 0, y: H - 32, w: W, h: 32 },           // Ground
-            { x: 0, y: 0, w: 32, h: H - 32 },           // Left wall
-            { x: W - 32, y: 0, w: 32, h: H - 32 },      // Right wall
-            { x: W/2 - 60, y: H - 100, w: 120, h: 16 }, // Center stack
+            { x: 0, y: H - 32, w: W, h: 32, solid: true },           // Ground
+            { x: 0, y: 0, w: 32, h: H - 32, solid: true },           // Left wall
+            { x: W - 32, y: 0, w: 32, h: H - 32, solid: true },      // Right wall
+            { x: W/2 - 60, y: H - 100, w: 120, h: 16 },
             { x: W/2 - 80, y: H - 180, w: 160, h: 16 },
             { x: W/2 - 60, y: H - 260, w: 120, h: 16 },
             { x: W/2 - 40, y: H - 340, w: 80, h: 16 },
-            { x: 60, y: H - 200, w: 80, h: 16 },        // Side perches
+            { x: 60, y: H - 200, w: 80, h: 16 },
             { x: W - 140, y: H - 200, w: 80, h: 16 },
         ],
     },
     {
         name: 'Pit',
-        verticalWrap: true, // Fall off bottom, appear at top
+        verticalWrap: true,
         platforms: (W, H) => [
-            { x: 0, y: H - 32, w: 200, h: 32 },         // Left ground
-            { x: W - 200, y: H - 32, w: 200, h: 32 },   // Right ground
-            { x: 0, y: 0, w: 32, h: H },                // Left wall (full height)
-            { x: W - 32, y: 0, w: 32, h: H },           // Right wall (full height)
-            { x: W/2 - 50, y: H - 80, w: 100, h: 16 },  // Pit bridge
+            { x: 0, y: H - 32, w: 200, h: 32, solid: true },         // Left ground
+            { x: W - 200, y: H - 32, w: 200, h: 32, solid: true },   // Right ground
+            { x: 0, y: 0, w: 32, h: H, solid: true },                // Left wall
+            { x: W - 32, y: 0, w: 32, h: H, solid: true },           // Right wall
+            { x: W/2 - 50, y: H - 80, w: 100, h: 16 },
             { x: 80, y: H - 150, w: 100, h: 16 },
             { x: W - 180, y: H - 150, w: 100, h: 16 },
             { x: W/2 - 70, y: H - 230, w: 140, h: 16 },
@@ -763,9 +770,9 @@ const LEVELS = [
         name: 'Scattered',
         verticalWrap: false,
         platforms: (W, H) => [
-            { x: 0, y: H - 32, w: W, h: 32 },           // Ground
-            { x: 0, y: 0, w: 32, h: H - 32 },           // Left wall
-            { x: W - 32, y: 0, w: 32, h: H - 32 },      // Right wall
+            { x: 0, y: H - 32, w: W, h: 32, solid: true },           // Ground
+            { x: 0, y: 0, w: 32, h: H - 32, solid: true },           // Left wall
+            { x: W - 32, y: 0, w: 32, h: H - 32, solid: true },      // Right wall
             { x: 80, y: H - 100, w: 80, h: 16 },
             { x: W - 160, y: H - 130, w: 80, h: 16 },
             { x: 200, y: H - 180, w: 80, h: 16 },
@@ -818,7 +825,7 @@ class Player {
         this.grounded = false;
         this.wallSliding = false;
         this.wallDir = 0;
-        this.canDoubleJump = true;
+        this.dropThroughTimer = 0; // Frames to ignore jump-through platforms
         
         // Dash
         this.dashing = false;
@@ -929,19 +936,22 @@ class Player {
         
         // Jump (X key)
         if (keysJustPressed['KeyX'] || keysJustPressed['KeyK']) {
-            if (this.grounded) {
+            const holdingDown = keys['ArrowDown'] || keys['KeyS'];
+            
+            if (this.grounded && holdingDown) {
+                // Drop through platform
+                this.dropThroughTimer = 10; // Ignore platforms for 10 frames
+                this.grounded = false;
+            } else if (this.grounded) {
+                // Normal jump
                 this.vy = CONFIG.PLAYER_JUMP;
                 this.grounded = false;
-                this.canDoubleJump = true;
             } else if (this.wallSliding) {
                 // Wall jump
                 this.vx = CONFIG.PLAYER_WALL_JUMP_X * -this.wallDir;
                 this.vy = CONFIG.PLAYER_WALL_JUMP_Y;
                 this.wallSliding = false;
                 this.facing = -this.wallDir;
-            } else if (this.canDoubleJump) {
-                this.vy = CONFIG.PLAYER_JUMP * CONFIG.PLAYER_DOUBLE_JUMP_MULT;
-                this.canDoubleJump = false;
             }
         }
         
@@ -1232,7 +1242,6 @@ class Player {
                 } else if (this.slashDir.y > 0) {
                     // Downward slash hitting floor - immediate bounce up
                     this.vy = CONFIG.GROUND_SLASH_BOUNCE;
-                    this.canDoubleJump = true; // Reset double jump on pogo
                 }
                 
                 // Spawn spark particles at impact point
@@ -1373,10 +1382,14 @@ class Player {
     }
     
     applyPhysics() {
-        // Gravity (reduced if wall sliding)
+        // Gravity (reduced if wall sliding or air slashing)
         if (!this.dashing) {
             if (this.wallSliding) {
                 this.vy = Math.min(this.vy + CONFIG.GRAVITY * 0.2, CONFIG.PLAYER_WALL_SLIDE);
+            } else if (this.slashing && !this.grounded) {
+                // Air slash: reduced gravity and horizontal friction
+                this.vy += CONFIG.GRAVITY * CONFIG.AIR_SLASH_FALL_MULT;
+                this.vx *= CONFIG.AIR_SLASH_FRICTION;
             } else {
                 this.vy += CONFIG.GRAVITY;
             }
@@ -1439,40 +1452,60 @@ class Player {
             this.vx *= CONFIG.FRICTION;
         }
         
+        // Decrement drop-through timer
+        if (this.dropThroughTimer > 0) this.dropThroughTimer--;
+        
         // Collision with platforms
         this.grounded = false;
         this.wallSliding = false;
         this.wallDir = 0;
         
         for (const p of state.platforms) {
+            const isSolid = p.solid === true;
+            const isJumpThrough = !isSolid;
+            
+            // Skip jump-through platforms if dropping through
+            if (isJumpThrough && this.dropThroughTimer > 0) continue;
+            
             if (this.collides(p)) {
-                // Resolve collision
                 const overlapX = Math.min(this.x + this.w - p.x, p.x + p.w - this.x);
                 const overlapY = Math.min(this.y + this.h - p.y, p.y + p.h - this.y);
                 
-                if (overlapX < overlapY) {
-                    // Horizontal collision (wall)
-                    if (this.x < p.x) {
-                        this.x = p.x - this.w;
-                        this.wallDir = 1;
-                    } else {
-                        this.x = p.x + p.w;
-                        this.wallDir = -1;
-                    }
-                    this.vx = 0;
-                    if (!this.grounded && this.vy > 0) {
-                        this.wallSliding = true;
-                    }
-                } else {
-                    // Vertical collision
-                    if (this.y < p.y) {
+                if (isJumpThrough) {
+                    // Jump-through platform: only collide from above when falling
+                    const feetY = this.y + this.h - this.vy; // Previous feet position
+                    if (this.vy > 0 && feetY <= p.y + 4) {
+                        // Landing on top
                         this.y = p.y - this.h;
                         this.grounded = true;
-                        this.canDoubleJump = true;
-                    } else {
-                        this.y = p.y + p.h;
+                        this.vy = 0;
                     }
-                    this.vy = 0;
+                    // No collision from below or sides
+                } else {
+                    // Solid platform: full collision
+                    if (overlapX < overlapY) {
+                        // Horizontal collision (wall)
+                        if (this.x < p.x) {
+                            this.x = p.x - this.w;
+                            this.wallDir = 1;
+                        } else {
+                            this.x = p.x + p.w;
+                            this.wallDir = -1;
+                        }
+                        this.vx = 0;
+                        if (!this.grounded && this.vy > 0) {
+                            this.wallSliding = true;
+                        }
+                    } else {
+                        // Vertical collision
+                        if (this.y < p.y) {
+                            this.y = p.y - this.h;
+                            this.grounded = true;
+                        } else {
+                            this.y = p.y + p.h;
+                        }
+                        this.vy = 0;
+                    }
                 }
             }
         }
