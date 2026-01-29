@@ -51,6 +51,13 @@ const CONFIG = {
     // Game
     KILLS_TO_WIN: 5,
     RESPAWN_TIME: 60,
+    
+    // Hit Stop
+    HIT_STOP_DURATION: 18, // ~0.3 seconds at 60fps
+    CLASH_HIT_STOP_DURATION: 9, // ~0.15 seconds at 60fps
+    
+    // Multi-enemy
+    ENEMY_COUNT: 3,
 };
 
 // =============================================================================
@@ -101,6 +108,98 @@ function loadAssets() {
     ASSETS.tiles.onload = onLoad;
     ASSETS.tiles.onerror = onLoad;
     ASSETS.tiles.src = 'assets/tiles-wood.png';
+}
+
+// =============================================================================
+// SOUND SYSTEM
+// =============================================================================
+
+const AUDIO = {
+    ctx: null,
+    initialized: false,
+};
+
+function initAudio() {
+    if (AUDIO.initialized) return;
+    AUDIO.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    AUDIO.initialized = true;
+}
+
+// Metallic clash sound - sword on sword
+function playClashSound() {
+    if (!AUDIO.ctx) initAudio();
+    const ctx = AUDIO.ctx;
+    const now = ctx.currentTime;
+    
+    // High metallic ring
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(1200, now);
+    osc1.frequency.exponentialRampToValueAtTime(800, now + 0.15);
+    gain1.gain.setValueAtTime(0.4, now);
+    gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+    osc1.connect(gain1).connect(ctx.destination);
+    osc1.start(now);
+    osc1.stop(now + 0.2);
+    
+    // Harsh impact layer
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = 'sawtooth';
+    osc2.frequency.setValueAtTime(400, now);
+    osc2.frequency.exponentialRampToValueAtTime(100, now + 0.08);
+    gain2.gain.setValueAtTime(0.2, now);
+    gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+    osc2.connect(gain2).connect(ctx.destination);
+    osc2.start(now);
+    osc2.stop(now + 0.1);
+    
+    // Noise burst for impact
+    const bufferSize = ctx.sampleRate * 0.05;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+    }
+    const noise = ctx.createBufferSource();
+    const noiseGain = ctx.createGain();
+    noise.buffer = buffer;
+    noiseGain.gain.setValueAtTime(0.15, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+    noise.connect(noiseGain).connect(ctx.destination);
+    noise.start(now);
+}
+
+// Death sound - dramatic slice
+function playDeathSound() {
+    if (!AUDIO.ctx) initAudio();
+    const ctx = AUDIO.ctx;
+    const now = ctx.currentTime;
+    
+    // Low thud
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(80, now);
+    osc1.frequency.exponentialRampToValueAtTime(40, now + 0.3);
+    gain1.gain.setValueAtTime(0.5, now);
+    gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+    osc1.connect(gain1).connect(ctx.destination);
+    osc1.start(now);
+    osc1.stop(now + 0.3);
+    
+    // Slice whoosh
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = 'sawtooth';
+    osc2.frequency.setValueAtTime(600, now);
+    osc2.frequency.exponentialRampToValueAtTime(150, now + 0.15);
+    gain2.gain.setValueAtTime(0.15, now);
+    gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+    osc2.connect(gain2).connect(ctx.destination);
+    osc2.start(now);
+    osc2.stop(now + 0.15);
 }
 
 // =============================================================================
@@ -283,6 +382,8 @@ const keysJustPressed = {};
 window.addEventListener('keydown', e => {
     if (!keys[e.code]) keysJustPressed[e.code] = true;
     keys[e.code] = true;
+    // Initialize audio on first keypress (browser autoplay policy)
+    if (!AUDIO.initialized) initAudio();
 });
 window.addEventListener('keyup', e => keys[e.code] = false);
 
@@ -306,6 +407,8 @@ const state = {
     paused: false,
     message: '',
     messageTimer: 0,
+    hitStopTimer: 0, // Characters freeze but particles continue
+    isClashHitStop: false, // Whether hit stop is from clash (vs death)
 };
 
 // =============================================================================
@@ -382,6 +485,17 @@ class Player {
         // Hit stun
         this.stunned = false;
         this.stunTimer = 0;
+        
+        // Hit stop death pending
+        this.pendingDeath = false;
+        this.pendingKnockbackX = 0;
+        this.pendingKnockbackY = 0;
+        this.killer = null;
+        
+        // Clash knockback pending
+        this.pendingClash = false;
+        this.pendingClashKnockbackX = 0;
+        this.pendingClashKnockbackY = 0;
         
         // AI state
         this.aiTarget = null;
@@ -488,8 +602,9 @@ class Player {
     }
     
     updateAI() {
-        const target = state.players.find(p => p !== this && p.alive);
-        if (!target) {
+        // AI always targets the human player (index 0)
+        const target = state.players[0];
+        if (!target || !target.alive) {
             // No target - wander
             this.aiWander();
             return;
@@ -671,20 +786,28 @@ class Player {
             if (dist < CONFIG.SWORD_RANGE) {
                 // Check for CLASH - both players slashing
                 if (other.slashing) {
-                    // Clash! Knock both players back
+                    // Clash! Store pending knockback for after hit stop
                     const knockDir = this.x < other.x ? -1 : 1;
-                    this.vx = knockDir * CONFIG.CLASH_KNOCKBACK;
-                    this.vy = -4;
-                    other.vx = -knockDir * CONFIG.CLASH_KNOCKBACK;
-                    other.vy = -4;
+                    this.pendingClashKnockbackX = knockDir * CONFIG.CLASH_KNOCKBACK;
+                    this.pendingClashKnockbackY = -5;
+                    other.pendingClashKnockbackX = -knockDir * CONFIG.CLASH_KNOCKBACK;
+                    other.pendingClashKnockbackY = -5;
+                    this.pendingClash = true;
+                    other.pendingClash = true;
                     
-                    // Clash particles
-                    const clashX = (this.x + other.x) / 2 + 6;
+                    // Clash particles - slick radial spark burst
+                    const clashX = (this.x + other.x) / 2 + 8;
                     const clashY = (this.y + other.y) / 2 + 10;
-                    spawnParticles(clashX, clashY, 15, COLORS.sword);
-                    spawnParticles(clashX, clashY, 10, COLORS.bullet);
+                    spawnClashParticles(clashX, clashY);
                     
-                    state.screenShake = 12;
+                    // Trigger hit stop for clash
+                    state.hitStopTimer = CONFIG.CLASH_HIT_STOP_DURATION;
+                    state.isClashHitStop = true;
+                    
+                    state.screenShake = 15;
+                    
+                    // Play clash sound
+                    playClashSound();
                     
                     // Cancel both slashes
                     this.slashing = false;
@@ -692,29 +815,21 @@ class Player {
                     this.slashCooldown = CONFIG.SWORD_COOLDOWN;
                     other.slashCooldown = CONFIG.SWORD_COOLDOWN;
                 } else {
-                    // Hit! Apply hit stun, blood, then kill
+                    // Hit! Apply hit stop, blood, then kill
                     const hitX = otherCx;
                     const hitY = otherCy;
                     
                     // Blood particles
                     spawnBloodParticles(hitX, hitY, 25, this.facing);
                     
-                    // Hit stun and knockback
-                    other.stunned = true;
-                    other.stunTimer = CONFIG.HIT_STUN_DURATION;
-                    other.vx = this.facing * CONFIG.HIT_STUN_KNOCKBACK;
-                    other.vy = -3;
+                    // Store knockback for after hit stop
+                    other.pendingKnockbackX = this.facing * CONFIG.HIT_STUN_KNOCKBACK;
+                    other.pendingKnockbackY = -3;
+                    other.pendingDeath = true;
+                    other.killer = this;
                     
-                    // Kill after brief stun (for dramatic effect)
-                    setTimeout(() => {
-                        if (other.stunned) {
-                            other.die();
-                            const idx = state.players.indexOf(this);
-                            state.roundKills[idx]++;
-                            updateUI();
-                            checkWin();
-                        }
-                    }, 150);
+                    // Trigger hit stop - freeze characters
+                    state.hitStopTimer = CONFIG.HIT_STOP_DURATION;
                     
                     state.screenShake = 10;
                 }
@@ -829,6 +944,7 @@ class Player {
         this.respawnTimer = CONFIG.RESPAWN_TIME;
         spawnParticles(this.x + this.w/2, this.y + this.h/2, 20, this.color);
         state.screenShake = 10;
+        playDeathSound();
     }
     
     respawn() {
@@ -920,6 +1036,52 @@ function spawnBloodParticles(x, y, count, direction) {
     }
 }
 
+// Radial spark burst for sword clash
+function spawnClashParticles(x, y) {
+    // Bright center flash
+    state.particles.push({
+        x, y,
+        vx: 0, vy: 0,
+        life: 12,
+        color: '#fff',
+        size: 16,
+        isFlash: true,
+    });
+    
+    // Radial sparks shooting outward
+    const sparkCount = 20;
+    for (let i = 0; i < sparkCount; i++) {
+        const angle = (i / sparkCount) * Math.PI * 2;
+        const speed = 5 + Math.random() * 5;
+        state.particles.push({
+            x: x + (Math.random() - 0.5) * 4,
+            y: y + (Math.random() - 0.5) * 4,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            life: 15 + Math.random() * 10,
+            color: Math.random() < 0.5 ? '#fff' : '#ffee88',
+            size: 2 + Math.random() * 2,
+            gravity: 0.1,
+            trail: true,
+        });
+    }
+    
+    // Extra bright yellow sparks
+    for (let i = 0; i < 10; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 3 + Math.random() * 8;
+        state.particles.push({
+            x, y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed - 2,
+            life: 20 + Math.random() * 15,
+            color: '#fbbf24',
+            size: 3,
+            gravity: 0.25,
+        });
+    }
+}
+
 function updateParticles() {
     for (let i = state.particles.length - 1; i >= 0; i--) {
         const p = state.particles[i];
@@ -936,7 +1098,25 @@ function drawParticles(ctx) {
     for (const p of state.particles) {
         ctx.globalAlpha = p.life / 40;
         ctx.fillStyle = p.color;
-        ctx.fillRect(Math.floor(p.x), Math.floor(p.y), Math.floor(p.size), Math.floor(p.size));
+        
+        if (p.isFlash) {
+            // Bright center flash - draw as circle with glow
+            ctx.save();
+            ctx.globalAlpha = p.life / 12;
+            ctx.shadowColor = '#fff';
+            ctx.shadowBlur = 20;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size * (p.life / 12), 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        } else if (p.trail) {
+            // Spark with trail
+            ctx.fillRect(Math.floor(p.x), Math.floor(p.y), Math.floor(p.size), Math.floor(p.size));
+            ctx.globalAlpha *= 0.5;
+            ctx.fillRect(Math.floor(p.x - p.vx * 0.5), Math.floor(p.y - p.vy * 0.5), Math.floor(p.size * 0.7), Math.floor(p.size * 0.7));
+        } else {
+            ctx.fillRect(Math.floor(p.x), Math.floor(p.y), Math.floor(p.size), Math.floor(p.size));
+        }
     }
     ctx.globalAlpha = 1;
 }
@@ -1086,11 +1266,22 @@ function init() {
     
     createStage();
     
-    // Create players
+    // Create player
     state.players = [
         new Player(60, CONFIG.HEIGHT - 60, false, COLORS.player1),
-        new Player(CONFIG.WIDTH - 80, CONFIG.HEIGHT - 60, true, COLORS.player2),
     ];
+    
+    // Spawn multiple enemies at different positions
+    const enemySpawns = [
+        { x: CONFIG.WIDTH - 80, y: CONFIG.HEIGHT - 60 },
+        { x: CONFIG.WIDTH / 2, y: CONFIG.HEIGHT - 130 },
+        { x: 80, y: CONFIG.HEIGHT - 170 },
+    ];
+    
+    for (let i = 0; i < CONFIG.ENEMY_COUNT; i++) {
+        const spawn = enemySpawns[i % enemySpawns.length];
+        state.players.push(new Player(spawn.x, spawn.y, true, COLORS.player2));
+    }
     
     updateUI();
     showMessage('FIGHT!', 60);
@@ -1100,6 +1291,55 @@ function update() {
     if (state.messageTimer > 0) {
         state.messageTimer--;
         if (state.messageTimer <= 0) hideMessage();
+    }
+    
+    // Hit stop - freeze characters but keep particles going
+    if (state.hitStopTimer > 0) {
+        state.hitStopTimer--;
+        
+        // Only update particles and effects during hit stop (dramatic freeze)
+        updateParticles();
+        updateSlashEffects();
+        
+        // When hit stop ends, apply pending deaths or clash knockbacks
+        if (state.hitStopTimer <= 0) {
+            // Handle clash knockbacks
+            if (state.isClashHitStop) {
+                for (const p of state.players) {
+                    if (p.pendingClash) {
+                        p.vx = p.pendingClashKnockbackX;
+                        p.vy = p.pendingClashKnockbackY;
+                        p.pendingClash = false;
+                        p.pendingClashKnockbackX = 0;
+                        p.pendingClashKnockbackY = 0;
+                    }
+                }
+                state.isClashHitStop = false;
+            }
+            
+            // Handle deaths
+            for (const p of state.players) {
+                if (p.pendingDeath) {
+                    // Apply knockback then die
+                    p.vx = p.pendingKnockbackX;
+                    p.vy = p.pendingKnockbackY;
+                    p.pendingDeath = false;
+                    p.die();
+                    
+                    // Credit the kill - player is idx 0, all AI share idx 1
+                    if (p.killer) {
+                        const killerIdx = p.killer.isAI ? 1 : 0;
+                        state.roundKills[killerIdx]++;
+                        p.killer = null;
+                    }
+                    updateUI();
+                    checkWin();
+                }
+            }
+        }
+        
+        clearJustPressed();
+        return; // Skip normal updates during hit stop
     }
     
     // Update players
