@@ -97,12 +97,12 @@ const ASSETS = {
     enemies: [],
 };
 
-// Background video sources - unique videos only
+// Background video sources - one per level
 const BG_VIDEO_SOURCES = {
     0: 'assets/bg-video.mp4',   // Dojo
     1: 'assets/bg-video-2.mp4', // Tower  
     2: 'assets/bg-video-3.mp4', // Pit
-    3: 'assets/bg-video.mp4',   // Scattered (same as Dojo)
+    3: 'assets/bg-video-4.mp4', // Scattered
 };
 
 function loadAssets() {
