@@ -573,6 +573,15 @@ window.addEventListener('keydown', e => {
         toggleDebugPanel(state.debugMode);
         console.log('Debug mode:', state.debugMode);
     }
+    // Time scale controls (O = slower, P = faster)
+    if (e.code === 'KeyO') {
+        state.timeScale = Math.max(0.01, state.timeScale - 0.01);
+        console.log('Time scale:', Math.round(state.timeScale * 100) + '%');
+    }
+    if (e.code === 'KeyP') {
+        state.timeScale = Math.min(2.0, state.timeScale + 0.01);
+        console.log('Time scale:', Math.round(state.timeScale * 100) + '%');
+    }
 });
 window.addEventListener('keyup', e => keys[e.code] = false);
 
@@ -689,6 +698,7 @@ const state = {
     currentLevelIndex: 0,
     verticalWrap: false,
     screenShake: 0,
+    timeScale: 1.0, // 1.0 = normal speed
     round: 1,
     paused: false,
     message: '',
@@ -2070,9 +2080,31 @@ function draw() {
     ctx.restore();
 }
 
+let frameAccumulator = 0;
+
 function gameLoop() {
-    update();
+    // Accumulate based on time scale
+    frameAccumulator += state.timeScale;
+    
+    // Run updates for accumulated frames
+    while (frameAccumulator >= 1) {
+        update();
+        frameAccumulator -= 1;
+    }
+    
+    // Always draw
     draw();
+    
+    // Show time scale on screen if not 100%
+    if (state.timeScale !== 1.0) {
+        ctx.save();
+        ctx.fillStyle = '#ff0';
+        ctx.font = '16px "Press Start 2P"';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${Math.round(state.timeScale * 100)}%`, CONFIG.WIDTH / 2, 30);
+        ctx.restore();
+    }
+    
     requestAnimationFrame(gameLoop);
 }
 
