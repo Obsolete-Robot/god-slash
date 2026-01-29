@@ -71,6 +71,70 @@ const COLORS = {
 };
 
 // =============================================================================
+// SPRITES & ASSETS
+// =============================================================================
+
+const ASSETS = {
+    loaded: false,
+    background: null,
+    playerSprite: null,
+    enemySprite: null,
+    tiles: null,
+};
+
+// Sprite frame definitions (x, y, width, height in source image)
+// Blue samurai sprite sheet layout (estimated from generated image)
+const PLAYER_FRAMES = {
+    idle: { x: 0, y: 0, w: 170, h: 250 },
+    run: { x: 170, y: 0, w: 170, h: 250 },
+    attack: { x: 340, y: 0, w: 200, h: 250 },
+    jump: { x: 0, y: 250, w: 170, h: 250 },
+    crouch: { x: 170, y: 250, w: 170, h: 250 },
+    slash: { x: 340, y: 250, w: 200, h: 250 },
+};
+
+// Red oni sprite sheet layout
+const ENEMY_FRAMES = {
+    idle: { x: 0, y: 0, w: 120, h: 180 },
+    run: { x: 280, y: 280, w: 120, h: 180 },
+    attack: { x: 140, y: 0, w: 200, h: 280 },
+    jump: { x: 340, y: 0, w: 100, h: 150 },
+    slash: { x: 0, y: 280, w: 150, h: 180 },
+};
+
+// Sprite scale (how much to shrink sprites to fit game)
+const SPRITE_SCALE = 0.12;
+
+function loadAssets() {
+    let loadCount = 0;
+    const totalAssets = 4;
+    
+    function onLoad() {
+        loadCount++;
+        if (loadCount >= totalAssets) {
+            ASSETS.loaded = true;
+            console.log('All assets loaded!');
+        }
+    }
+    
+    ASSETS.background = new Image();
+    ASSETS.background.onload = onLoad;
+    ASSETS.background.src = 'assets/bg-dojo.png';
+    
+    ASSETS.playerSprite = new Image();
+    ASSETS.playerSprite.onload = onLoad;
+    ASSETS.playerSprite.src = 'assets/samurai-blue.png';
+    
+    ASSETS.enemySprite = new Image();
+    ASSETS.enemySprite.onload = onLoad;
+    ASSETS.enemySprite.src = 'assets/samurai-red.png';
+    
+    ASSETS.tiles = new Image();
+    ASSETS.tiles.onload = onLoad;
+    ASSETS.tiles.src = 'assets/tiles-wood.png';
+}
+
+// =============================================================================
 // INPUT
 // =============================================================================
 
@@ -144,13 +208,18 @@ class Player {
         this.y = y;
         this.spawnX = x;
         this.spawnY = y;
-        this.w = 12;
-        this.h = 20;
+        this.w = 20;  // Slightly wider for sprites
+        this.h = 28;  // Slightly taller for sprites
         this.vx = 0;
         this.vy = 0;
         this.facing = 1; // 1 = right, -1 = left
         this.color = color;
         this.isAI = isAI;
+        
+        // Sprite setup
+        this.sprite = isAI ? ASSETS.enemySprite : ASSETS.playerSprite;
+        this.frames = isAI ? ENEMY_FRAMES : PLAYER_FRAMES;
+        this.currentFrame = 'idle';
         
         // State flags
         this.grounded = false;
@@ -654,27 +723,76 @@ class Player {
             ctx.globalAlpha = 0.5 + Math.sin(Date.now() * 0.05) * 0.3;
         }
         
-        // Body (flash white when stunned)
-        ctx.fillStyle = this.stunned ? '#fff' : this.color;
-        ctx.fillRect(Math.floor(this.x), Math.floor(this.y), this.w, this.h);
-        
-        // Eyes (facing direction) - X eyes when stunned
-        ctx.fillStyle = this.stunned ? '#f00' : '#fff';
-        const eyeX = this.x + this.w/2 + this.facing * 2;
-        if (this.stunned) {
-            // X eyes
-            ctx.fillRect(Math.floor(eyeX - 1), Math.floor(this.y + 3), 4, 1);
-            ctx.fillRect(Math.floor(eyeX), Math.floor(this.y + 2), 2, 4);
+        // Determine current animation frame
+        if (this.slashing) {
+            this.currentFrame = 'slash';
+        } else if (this.stunned) {
+            this.currentFrame = 'idle';
+        } else if (!this.grounded) {
+            this.currentFrame = 'jump';
+        } else if (Math.abs(this.vx) > 0.5) {
+            this.currentFrame = 'run';
         } else {
-            ctx.fillRect(Math.floor(eyeX), Math.floor(this.y + 4), 2, 2);
+            this.currentFrame = 'idle';
         }
         
-        // Draw sword when slashing
-        if (this.slashing) {
-            ctx.fillStyle = COLORS.sword;
-            const swordX = this.x + this.w/2 + this.facing * 12;
-            const swordY = this.y + this.h/2 - 2;
-            ctx.fillRect(Math.floor(swordX), Math.floor(swordY), this.facing * 14, 4);
+        // Try to draw sprite, fallback to rectangle
+        const frame = this.frames[this.currentFrame] || this.frames.idle;
+        const sprite = this.sprite;
+        
+        if (ASSETS.loaded && sprite && sprite.complete && frame) {
+            // Calculate draw dimensions
+            const drawW = frame.w * SPRITE_SCALE;
+            const drawH = frame.h * SPRITE_SCALE;
+            
+            // Center sprite on hitbox
+            const drawX = this.x + this.w/2 - drawW/2;
+            const drawY = this.y + this.h - drawH; // Align feet
+            
+            ctx.save();
+            
+            // Flip sprite based on facing direction
+            if (this.facing === -1) {
+                ctx.translate(drawX + drawW, drawY);
+                ctx.scale(-1, 1);
+                ctx.drawImage(
+                    sprite,
+                    frame.x, frame.y, frame.w, frame.h,
+                    0, 0, drawW, drawH
+                );
+            } else {
+                ctx.drawImage(
+                    sprite,
+                    frame.x, frame.y, frame.w, frame.h,
+                    drawX, drawY, drawW, drawH
+                );
+            }
+            
+            // Tint white when stunned
+            if (this.stunned) {
+                ctx.globalCompositeOperation = 'source-atop';
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+                ctx.fillRect(drawX, drawY, drawW, drawH);
+            }
+            
+            ctx.restore();
+        } else {
+            // Fallback: colored rectangle
+            ctx.fillStyle = this.stunned ? '#fff' : this.color;
+            ctx.fillRect(Math.floor(this.x), Math.floor(this.y), this.w, this.h);
+            
+            // Eyes
+            ctx.fillStyle = this.stunned ? '#f00' : '#fff';
+            const eyeX = this.x + this.w/2 + this.facing * 3;
+            ctx.fillRect(Math.floor(eyeX), Math.floor(this.y + 5), 2, 2);
+            
+            // Sword when slashing
+            if (this.slashing) {
+                ctx.fillStyle = COLORS.sword;
+                const swordX = this.x + this.w/2 + this.facing * 15;
+                const swordY = this.y + this.h/2 - 2;
+                ctx.fillRect(Math.floor(swordX), Math.floor(swordY), this.facing * 18, 4);
+            }
         }
         
         ctx.restore();
@@ -884,6 +1002,9 @@ canvas.width = CONFIG.WIDTH;
 canvas.height = CONFIG.HEIGHT;
 
 function init() {
+    // Load sprite assets
+    loadAssets();
+    
     createStage();
     
     // Create players
@@ -927,17 +1048,38 @@ function draw() {
         );
     }
     
-    // Clear
-    ctx.fillStyle = COLORS.bg;
-    ctx.fillRect(0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
+    // Draw background
+    if (ASSETS.loaded && ASSETS.background && ASSETS.background.complete) {
+        ctx.drawImage(ASSETS.background, 0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
+        // Darken slightly for contrast
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+        ctx.fillRect(0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
+    } else {
+        // Fallback solid color
+        ctx.fillStyle = COLORS.bg;
+        ctx.fillRect(0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
+    }
     
-    // Draw platforms
+    // Draw platforms with wood texture or fallback
     for (const p of state.platforms) {
-        ctx.fillStyle = COLORS.platform;
-        ctx.fillRect(p.x, p.y, p.w, p.h);
-        // Top highlight
-        ctx.fillStyle = COLORS.platformLight;
-        ctx.fillRect(p.x, p.y, p.w, 2);
+        if (ASSETS.loaded && ASSETS.tiles && ASSETS.tiles.complete) {
+            // Tile the wood texture across platform
+            const pattern = ctx.createPattern(ASSETS.tiles, 'repeat');
+            ctx.fillStyle = pattern;
+            ctx.fillRect(p.x, p.y, p.w, p.h);
+            // Dark edge for depth
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+            ctx.fillRect(p.x, p.y + p.h - 2, p.w, 2);
+            // Top highlight
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+            ctx.fillRect(p.x, p.y, p.w, 2);
+        } else {
+            // Fallback solid platform
+            ctx.fillStyle = COLORS.platform;
+            ctx.fillRect(p.x, p.y, p.w, p.h);
+            ctx.fillStyle = COLORS.platformLight;
+            ctx.fillRect(p.x, p.y, p.w, 2);
+        }
     }
     
     // Draw effects
