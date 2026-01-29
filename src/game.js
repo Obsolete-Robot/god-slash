@@ -13,15 +13,15 @@ const CONFIG = {
     HEIGHT: 216,
     
     // Physics
-    GRAVITY: 0.6,
+    GRAVITY: 0.38,
     FRICTION: 0.85,
     
     // Player
-    PLAYER_SPEED: 3,
-    PLAYER_JUMP: -10,
-    PLAYER_WALL_SLIDE: 2,
-    PLAYER_WALL_JUMP_X: 6,
-    PLAYER_WALL_JUMP_Y: -9,
+    PLAYER_SPEED: 2.2,
+    PLAYER_JUMP: -8,
+    PLAYER_WALL_SLIDE: 1.5,
+    PLAYER_WALL_JUMP_X: 5,
+    PLAYER_WALL_JUMP_Y: -7,
     PLAYER_DASH_SPEED: 12,
     PLAYER_DASH_DURATION: 8,
     PLAYER_DASH_COOLDOWN: 30,
@@ -32,6 +32,7 @@ const CONFIG = {
     SWORD_ARC: Math.PI * 0.6,
     SWORD_DURATION: 8,
     SWORD_COOLDOWN: 15,
+    SURFACE_DEFLECT_SPEED: 8, // Knockback from slashing surfaces
     HIT_STUN_DURATION: 20,
     HIT_STUN_KNOCKBACK: 8,
     CLASH_KNOCKBACK: 10,
@@ -400,15 +401,23 @@ function drawOni(ctx, x, y, w, h, facing, frame, stunned) {
     ctx.restore();
 }
 
-// Draw crescent moon slash effect
-function drawSlashCrescent(ctx, x, y, facing, progress) {
+// Draw crescent moon slash effect - supports 4 directions
+function drawSlashCrescent(ctx, x, y, dirX, dirY, progress) {
     ctx.save();
     ctx.translate(x, y);
     
     const alpha = 1 - progress * 0.7;
     const scale = 0.5 + progress * 0.8;
     
-    ctx.scale(scale * facing, scale);
+    // Rotate based on direction
+    let rotation = 0;
+    if (dirX > 0) rotation = 0;
+    else if (dirX < 0) rotation = Math.PI;
+    else if (dirY < 0) rotation = -Math.PI / 2;
+    else if (dirY > 0) rotation = Math.PI / 2;
+    
+    ctx.rotate(rotation);
+    ctx.scale(scale, scale);
     ctx.globalAlpha = alpha;
     
     // Crescent moon slash
@@ -534,6 +543,7 @@ class Player {
         this.slashing = false;
         this.slashTimer = 0;
         this.slashCooldown = 0;
+        this.slashDir = { x: 1, y: 0 }; // Direction of current slash (4-way)
         this.bullets = CONFIG.BULLET_COUNT;
         this.gunCooldown = 0;
         
@@ -621,8 +631,8 @@ class Player {
             this.facing = 1;
         }
         
-        // Jump
-        if (keysJustPressed['ArrowUp'] || keysJustPressed['KeyW'] || keysJustPressed['Space']) {
+        // Jump (X key)
+        if (keysJustPressed['KeyX'] || keysJustPressed['KeyK']) {
             if (this.grounded) {
                 this.vy = CONFIG.PLAYER_JUMP;
                 this.grounded = false;
@@ -649,15 +659,31 @@ class Player {
             this.dash();
         }
         
-        // Sword slash
+        // Sword slash (Z key) - 4 directional based on arrow keys
         if ((keysJustPressed['KeyZ'] || keysJustPressed['KeyJ']) && this.slashCooldown <= 0) {
+            // Determine slash direction from arrow keys
+            const up = keys['ArrowUp'] || keys['KeyW'];
+            const down = keys['ArrowDown'] || keys['KeyS'];
+            const left = keys['ArrowLeft'] || keys['KeyA'];
+            const right = keys['ArrowRight'] || keys['KeyD'];
+            
+            if (up && !down) {
+                this.slashDir = { x: 0, y: -1 };
+            } else if (down && !up) {
+                this.slashDir = { x: 0, y: 1 };
+            } else if (left && !right) {
+                this.slashDir = { x: -1, y: 0 };
+                this.facing = -1;
+            } else if (right && !left) {
+                this.slashDir = { x: 1, y: 0 };
+                this.facing = 1;
+            } else {
+                // Default to facing direction
+                this.slashDir = { x: this.facing, y: 0 };
+            }
+            
             this.slash();
         }
-        
-        // Shoot (DISABLED)
-        // if (CONFIG.GUN_ENABLED && (keysJustPressed['KeyX'] || keysJustPressed['KeyK']) && this.bullets > 0 && this.gunCooldown <= 0) {
-        //     this.shoot();
-        // }
     }
     
     updateAI() {
@@ -723,6 +749,14 @@ class Player {
             case 'attack':
                 this.facing = dx > 0 ? 1 : -1;
                 if (dist < CONFIG.SWORD_RANGE * 1.2 && this.slashCooldown <= 0) {
+                    // AI picks slash direction toward target
+                    if (Math.abs(dy) > Math.abs(dx) * 1.5) {
+                        // Target is mostly above/below
+                        this.slashDir = { x: 0, y: dy > 0 ? 1 : -1 };
+                    } else {
+                        // Target is mostly horizontal
+                        this.slashDir = { x: dx > 0 ? 1 : -1, y: 0 };
+                    }
                     this.slash();
                     this.aiAction = 'retreat'; // Back off after attack
                     this.aiDecisionTimer = 20;
@@ -816,22 +850,60 @@ class Player {
         this.slashTimer = CONFIG.SWORD_DURATION;
         this.slashCooldown = CONFIG.SWORD_COOLDOWN;
         
-        // Add slash effect
+        // Add slash effect with direction
         state.slashEffects.push({
-            x: this.x + this.w/2,
-            y: this.y + this.h/2,
-            dir: this.facing,
+            x: this.x + this.w/2 + this.slashDir.x * 10,
+            y: this.y + this.h/2 + this.slashDir.y * 10,
+            dirX: this.slashDir.x,
+            dirY: this.slashDir.y,
+            dir: this.slashDir.x !== 0 ? this.slashDir.x : this.facing, // For backwards compat
             timer: CONFIG.SWORD_DURATION,
             owner: this,
         });
         
-        // Check for hits
+        // Check for hits (enemies and surfaces)
         this.checkSlashHits();
+        this.checkSurfaceSlash();
+    }
+    
+    checkSurfaceSlash() {
+        // Check if slash hits a platform/wall and deflect player away
+        const slashX = this.x + this.w/2 + this.slashDir.x * CONFIG.SWORD_RANGE;
+        const slashY = this.y + this.h/2 + this.slashDir.y * CONFIG.SWORD_RANGE;
+        
+        for (const p of state.platforms) {
+            // Check if slash point is inside platform
+            if (slashX > p.x && slashX < p.x + p.w &&
+                slashY > p.y && slashY < p.y + p.h) {
+                
+                // Deflect player away from the surface they slashed
+                if (this.slashDir.x !== 0) {
+                    // Horizontal slash - push back horizontally
+                    this.vx = -this.slashDir.x * CONFIG.SURFACE_DEFLECT_SPEED;
+                    this.vy = -3; // Small upward boost
+                } else if (this.slashDir.y < 0) {
+                    // Upward slash hitting ceiling - push down and away
+                    this.vy = CONFIG.SURFACE_DEFLECT_SPEED * 0.7;
+                } else if (this.slashDir.y > 0) {
+                    // Downward slash hitting floor - pogo bounce!
+                    this.vy = -CONFIG.SURFACE_DEFLECT_SPEED;
+                    this.canDoubleJump = true; // Reset double jump on pogo
+                }
+                
+                // Spawn spark particles at impact point
+                spawnParticles(slashX, slashY, 8, '#fff');
+                spawnParticles(slashX, slashY, 5, '#ffee88');
+                
+                state.screenShake = 5;
+                break; // Only deflect once
+            }
+        }
     }
     
     checkSlashHits() {
-        const cx = this.x + this.w/2 + this.facing * 10;
-        const cy = this.y + this.h/2;
+        // Slash hitbox is in the direction of the slash
+        const cx = this.x + this.w/2 + this.slashDir.x * 12;
+        const cy = this.y + this.h/2 + this.slashDir.y * 12;
         
         // Hit other players
         for (const other of state.players) {
@@ -1051,9 +1123,9 @@ class Player {
         // Draw crescent slash effect when slashing
         if (this.slashing) {
             const slashProgress = 1 - (this.slashTimer / CONFIG.SWORD_DURATION);
-            const slashX = this.x + this.w/2 + this.facing * 20;
-            const slashY = this.y + this.h/2;
-            drawSlashCrescent(ctx, slashX, slashY, this.facing, slashProgress);
+            const slashX = this.x + this.w/2 + this.slashDir.x * 20;
+            const slashY = this.y + this.h/2 + this.slashDir.y * 20;
+            drawSlashCrescent(ctx, slashX, slashY, this.slashDir.x || this.facing, this.slashDir.y, slashProgress);
         }
         
         ctx.restore();
@@ -1250,7 +1322,7 @@ function updateSlashEffects() {
 function drawSlashEffects(ctx) {
     for (const s of state.slashEffects) {
         const progress = 1 - (s.timer / CONFIG.SWORD_DURATION);
-        drawSlashCrescent(ctx, s.x, s.y, s.dir, progress);
+        drawSlashCrescent(ctx, s.x, s.y, s.dirX || s.dir, s.dirY || 0, progress);
     }
 }
 
