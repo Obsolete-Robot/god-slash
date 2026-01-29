@@ -905,6 +905,9 @@ const state = {
         countdownNum: 3,     // Current countdown number
         fightScale: 0,       // Scale for FIGHT! pop-in
     },
+    
+    // Game over state (prevents multiple reset triggers)
+    gameOverPending: false,
 };
 
 // =============================================================================
@@ -2927,9 +2930,13 @@ function hideMessage() {
 }
 
 function checkGameOver() {
+    // Prevent multiple triggers
+    if (state.gameOverPending) return;
+    
     // Check if player is out of lives
     const player = state.players[0];
     if (player.lives <= 0) {
+        state.gameOverPending = true;
         showMessage('GAME OVER', 180);
         setTimeout(() => {
             state.round++;
@@ -2941,6 +2948,7 @@ function checkGameOver() {
     // Check if all enemies are out of lives
     const aliveEnemies = state.players.slice(1).filter(p => p.lives > 0);
     if (aliveEnemies.length === 0) {
+        state.gameOverPending = true;
         showMessage('YOU WIN!', 180);
         setTimeout(() => {
             state.round++;
@@ -2950,6 +2958,9 @@ function checkGameOver() {
 }
 
 function resetMatch() {
+    // Clear game over flag
+    state.gameOverPending = false;
+    
     // Select random level
     createStage();
     
