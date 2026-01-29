@@ -70,7 +70,13 @@ const CONFIG = {
     // Game
     LIVES_PER_CHARACTER: 5,
     RESPAWN_TIME: 75,
+    RESPAWN_INVULN: 90, // Invulnerability frames after respawn (~1.5 sec)
     ENEMY_COUNT: 3,
+    
+    // AI Behavior
+    AI_ATTACK_HESITATION: 0.03, // Lower = more hesitation before attacking
+    AI_RETREAT_CHANCE: 0.15,    // Chance to retreat after decisions
+    AI_RETREAT_DURATION: 120,   // Frames to retreat (~2 sec)
     
     // Gun (DISABLED)
     GUN_ENABLED: false,
@@ -91,7 +97,8 @@ const TUNABLE_KEYS = [
     'BOP_BOUNCE_UP', 'BOP_PUSH_DOWN', 'PUSH_FORCE',
     'AIR_SLASH_FRICTION', 'AIR_SLASH_FALL_MULT',
     'AI_REACTION_TIME', 'AI_AGGRESSION', 'AI_WANDER_CHANCE', 'AI_IDLE_TIME',
-    'LIVES_PER_CHARACTER', 'RESPAWN_TIME', 'ENEMY_COUNT',
+    'AI_ATTACK_HESITATION', 'AI_RETREAT_CHANCE', 'AI_RETREAT_DURATION',
+    'LIVES_PER_CHARACTER', 'RESPAWN_TIME', 'RESPAWN_INVULN', 'ENEMY_COUNT',
 ];
 
 // =============================================================================
@@ -646,8 +653,8 @@ function buildDebugPanel() {
         'Air Slash': ['AIR_SLASH_FRICTION', 'AIR_SLASH_FALL_MULT'],
         'Hit Stop': ['HIT_STOP_DURATION', 'CLASH_HIT_STOP_DURATION'],
         'Collision': ['BOP_BOUNCE_UP', 'BOP_PUSH_DOWN', 'PUSH_FORCE'],
-        'AI': ['AI_REACTION_TIME', 'AI_AGGRESSION', 'AI_WANDER_CHANCE', 'AI_IDLE_TIME'],
-        'Game': ['LIVES_PER_CHARACTER', 'RESPAWN_TIME', 'ENEMY_COUNT'],
+        'AI': ['AI_REACTION_TIME', 'AI_AGGRESSION', 'AI_WANDER_CHANCE', 'AI_IDLE_TIME', 'AI_ATTACK_HESITATION', 'AI_RETREAT_CHANCE', 'AI_RETREAT_DURATION'],
+        'Game': ['LIVES_PER_CHARACTER', 'RESPAWN_TIME', 'RESPAWN_INVULN', 'ENEMY_COUNT'],
     };
     
     let html = '';
@@ -878,6 +885,8 @@ class Player {
         this.alive = true;
         this.respawnTimer = 0;
         this.lives = CONFIG.LIVES_PER_CHARACTER;
+        this.invulnTimer = 0; // Invulnerability after respawn
+        this.spawnEffectTimer = 0; // Visual spawn effect
         
         // Movement lock (for wall slash delay)
         this.movementLockTimer = 0;
@@ -905,6 +914,7 @@ class Player {
         this.aiIdleTimer = 0;
         this.aiPatrolTarget = null;
         this.aiAttackDelay = 0; // Frames to wait before attacking
+        this.aiRetreatTimer = 0; // Forced retreat duration
     }
     
     update() {
@@ -932,6 +942,8 @@ class Player {
         if (this.slashCooldown > 0) this.slashCooldown--;
         if (this.gunCooldown > 0) this.gunCooldown--;
         if (this.movementLockTimer > 0) this.movementLockTimer--;
+        if (this.invulnTimer > 0) this.invulnTimer--;
+        if (this.spawnEffectTimer > 0) this.spawnEffectTimer--;
         
         // Handle input
         if (this.isAI) {
@@ -1033,12 +1045,21 @@ class Player {
     }
     
     updateAI() {
+        // Decrement retreat timer
+        if (this.aiRetreatTimer > 0) {
+            this.aiRetreatTimer--;
+            this.aiWander(); // Just wander while in retreat mode
+            return;
+        }
+        
         // Find nearest alive target (any other player/enemy)
         let target = null;
         let minDist = Infinity;
         
         for (const other of state.players) {
             if (other === this || !other.alive) continue;
+            // Don't target invulnerable players
+            if (other.invulnTimer > 0) continue;
             const d = Math.sqrt((other.x - this.x) ** 2 + (other.y - this.y) ** 2);
             if (d < minDist) {
                 minDist = d;
@@ -1061,8 +1082,14 @@ class Player {
         
         this.aiDecisionTimer--;
         if (this.aiDecisionTimer <= 0) {
-            this.aiDecisionTimer = CONFIG.AI_REACTION_TIME + Math.random() * 15;
+            this.aiDecisionTimer = CONFIG.AI_REACTION_TIME + Math.random() * 20;
             this.makeAIDecision(target, dist);
+            
+            // Random chance to retreat instead
+            if (Math.random() < CONFIG.AI_RETREAT_CHANCE) {
+                this.aiRetreatTimer = CONFIG.AI_RETREAT_DURATION;
+                this.aiAction = 'wander';
+            }
         }
         
         // Execute current action
@@ -1102,9 +1129,9 @@ class Player {
                 this.aiAccelerate(Math.sign(dx));
                 this.facing = dx > 0 ? 1 : -1;
                 
-                // Attack while chasing if in range!
+                // Attack while chasing if in range (with hesitation)
                 const chaseAttackRange = CONFIG.SLASH_WIDTH + 30;
-                if (dist < chaseAttackRange && this.slashCooldown <= 0 && Math.random() < 0.15) {
+                if (dist < chaseAttackRange && this.slashCooldown <= 0 && Math.random() < CONFIG.AI_ATTACK_HESITATION) {
                     const absDx = Math.abs(dx);
                     const absDy = Math.abs(dy);
                     if (absDy > absDx * 1.2 && dy < 0) {
@@ -1373,6 +1400,7 @@ class Player {
         for (const other of state.players) {
             if (other === this || !other.alive) continue;
             if (other.dashing) continue; // Dash i-frames
+            if (other.invulnTimer > 0) continue; // Respawn invulnerability
             
             // Rectangle vs rectangle collision
             const hit = hitbox.x < other.x + other.w &&
@@ -1637,8 +1665,19 @@ class Player {
     respawn() {
         if (this.lives <= 0) return; // Stay dead if no lives
         this.alive = true;
-        this.x = this.spawnX;
-        this.y = this.spawnY;
+        
+        // Pick random spawn location
+        const spawnPoints = [
+            { x: 120, y: CONFIG.HEIGHT - 120 },
+            { x: CONFIG.WIDTH - 160, y: CONFIG.HEIGHT - 120 },
+            { x: CONFIG.WIDTH / 2, y: CONFIG.HEIGHT - 260 },
+            { x: 160, y: CONFIG.HEIGHT - 340 },
+            { x: CONFIG.WIDTH - 200, y: CONFIG.HEIGHT - 340 },
+        ];
+        const spawn = spawnPoints[Math.floor(Math.random() * spawnPoints.length)];
+        this.x = spawn.x;
+        this.y = spawn.y;
+        
         this.vx = 0;
         this.vy = 0;
         this.bullets = CONFIG.BULLET_COUNT;
@@ -1646,6 +1685,18 @@ class Player {
         this.slashing = false;
         this.stunned = false;
         this.movementLockTimer = 0;
+        this.invulnTimer = CONFIG.RESPAWN_INVULN;
+        this.spawnEffectTimer = 30; // Spawn flash effect
+        
+        // AI should retreat after respawning
+        if (this.isAI) {
+            this.aiRetreatTimer = 60; // ~1 second before engaging
+            this.aiAction = 'wander';
+        }
+        
+        // Spawn particles
+        spawnParticles(this.x + this.w/2, this.y + this.h/2, 15, '#fff');
+        
         updateUI();
     }
     
@@ -1662,6 +1713,16 @@ class Player {
         // Flash white when stunned
         if (this.stunned && Math.floor(this.stunTimer / 3) % 2 === 0) {
             ctx.globalAlpha = 0.6;
+        }
+        
+        // Invulnerability flash (blink effect)
+        if (this.invulnTimer > 0 && Math.floor(this.invulnTimer / 4) % 2 === 0) {
+            ctx.globalAlpha = 0.3;
+        }
+        
+        // Spawn effect (bright flash)
+        if (this.spawnEffectTimer > 0) {
+            ctx.globalAlpha = 0.5 + (this.spawnEffectTimer / 30) * 0.5;
         }
         
         // Get the appropriate sprite
