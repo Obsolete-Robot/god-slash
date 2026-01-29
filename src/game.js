@@ -117,12 +117,71 @@ function loadAssets() {
 const AUDIO = {
     ctx: null,
     initialized: false,
+    music: null,
+    musicGain: null,
+    muted: false,
+    volume: 0.5,
 };
 
 function initAudio() {
     if (AUDIO.initialized) return;
     AUDIO.ctx = new (window.AudioContext || window.webkitAudioContext)();
     AUDIO.initialized = true;
+    
+    // Start background music
+    startBackgroundMusic();
+}
+
+function startBackgroundMusic() {
+    if (AUDIO.music) return; // Already playing
+    
+    AUDIO.music = new Audio('assets/music-bg.mp3');
+    AUDIO.music.loop = true;
+    AUDIO.music.volume = AUDIO.muted ? 0 : AUDIO.volume;
+    
+    // Play (may be blocked by autoplay policy, but we init on keypress so should be fine)
+    AUDIO.music.play().catch(e => {
+        console.log('Music autoplay blocked, will start on interaction');
+    });
+}
+
+function setMusicVolume(vol) {
+    AUDIO.volume = Math.max(0, Math.min(1, vol));
+    if (AUDIO.music && !AUDIO.muted) {
+        AUDIO.music.volume = AUDIO.volume;
+    }
+    // Update slider
+    document.getElementById('volume-slider').value = AUDIO.volume * 100;
+}
+
+function toggleMute() {
+    AUDIO.muted = !AUDIO.muted;
+    if (AUDIO.music) {
+        AUDIO.music.volume = AUDIO.muted ? 0 : AUDIO.volume;
+    }
+    // Update button
+    document.getElementById('mute-btn').textContent = AUDIO.muted ? '🔇' : '🔊';
+}
+
+// Setup audio controls
+function setupAudioControls() {
+    const muteBtn = document.getElementById('mute-btn');
+    const volumeSlider = document.getElementById('volume-slider');
+    
+    muteBtn.addEventListener('click', () => {
+        // Initialize audio if not yet (first interaction)
+        if (!AUDIO.initialized) initAudio();
+        toggleMute();
+    });
+    
+    volumeSlider.addEventListener('input', (e) => {
+        // Initialize audio if not yet
+        if (!AUDIO.initialized) initAudio();
+        setMusicVolume(e.target.value / 100);
+    });
+    
+    // Set initial slider value
+    volumeSlider.value = AUDIO.volume * 100;
 }
 
 // Metallic clash sound - sword on sword
@@ -1263,6 +1322,9 @@ canvas.height = CONFIG.HEIGHT;
 function init() {
     // Load sprite assets
     loadAssets();
+    
+    // Setup audio controls
+    setupAudioControls();
     
     createStage();
     
