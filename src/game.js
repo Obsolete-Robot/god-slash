@@ -171,10 +171,10 @@ function switchBackgroundVideo(levelIndex) {
         return; // Will be called again when videos load
     }
     
-    // Pause current video
-    if (ASSETS.currentBgVideo) {
-        ASSETS.currentBgVideo.pause();
-    }
+    // Pause ALL videos first
+    ASSETS.bgVideos.forEach(v => {
+        if (v) v.pause();
+    });
     
     // Switch to new video
     const newVideo = ASSETS.bgVideos[levelIndex % ASSETS.bgVideos.length];
@@ -1880,8 +1880,13 @@ function draw() {
     }
     
     // Draw background video
-    if (ASSETS.loaded && ASSETS.currentBgVideo && ASSETS.currentBgVideo.readyState >= 2) {
-        ctx.drawImage(ASSETS.currentBgVideo, 0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
+    const video = ASSETS.currentBgVideo;
+    if (ASSETS.loaded && video && video.readyState >= 2) {
+        // Ensure video is playing
+        if (video.paused) {
+            video.play().catch(() => {});
+        }
+        ctx.drawImage(video, 0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
         // Darken slightly for contrast
         ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
         ctx.fillRect(0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
