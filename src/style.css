@@ -28,39 +28,89 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    padding: 0 40px;
+    padding: 0 30px;
     pointer-events: none;
     z-index: 100;
 }
 
-#p1-score, #p2-score {
+#health-bars {
     display: flex;
     flex-direction: column;
+    gap: 8px;
+}
+
+.health-row {
+    display: flex;
     align-items: center;
-    gap: 5px;
+    gap: 10px;
 }
 
-#p1-score .label {
-    color: #4af;
-    font-size: 10px;
+.char-label {
+    font-size: 14px;
+    color: #fff;
+    text-shadow: 
+        -2px -2px 0 #000,
+        2px -2px 0 #000,
+        -2px 2px 0 #000,
+        2px 2px 0 #000,
+        0 -2px 0 #000,
+        0 2px 0 #000,
+        -2px 0 0 #000,
+        2px 0 0 #000;
+    min-width: 80px;
 }
 
-#p2-score .label {
-    color: #f44;
-    font-size: 10px;
+.char-label.enemy {
+    color: #f88;
 }
 
-.lives {
-    color: #f44;
-    font-size: 16px;
-    text-shadow: 0 0 8px #f44;
-    letter-spacing: 2px;
+.health-pips {
+    display: flex;
+    gap: 4px;
+}
+
+.pip {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #fff 0%, #ccc 50%, #999 100%);
+    box-shadow: 
+        inset 2px 2px 4px rgba(255,255,255,0.8),
+        inset -2px -2px 4px rgba(0,0,0,0.3),
+        1px 1px 2px rgba(0,0,0,0.5);
+    border: 2px solid #333;
+}
+
+.pip.empty {
+    background: linear-gradient(135deg, #444 0%, #222 50%, #111 100%);
+    box-shadow: 
+        inset 2px 2px 4px rgba(255,255,255,0.1),
+        inset -2px -2px 4px rgba(0,0,0,0.5),
+        1px 1px 2px rgba(0,0,0,0.5);
+}
+
+.pip.player {
+    background: linear-gradient(135deg, #6cf 0%, #4af 50%, #28f 100%);
+}
+
+.pip.enemy {
+    background: linear-gradient(135deg, #f66 0%, #f44 50%, #c22 100%);
 }
 
 #round-info {
+    font-size: 16px;
     color: #fff;
-    font-size: 12px;
-    opacity: 0.7;
+    text-shadow: 
+        -2px -2px 0 #000,
+        2px -2px 0 #000,
+        -2px 2px 0 #000,
+        2px 2px 0 #000;
+}
+
+#enemy-health-container {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
 }
 
 #message {

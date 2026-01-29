@@ -524,6 +524,7 @@ const state = {
     particles: [],
     slashEffects: [],
     platforms: [],
+    currentLevel: '',
     screenShake: 0,
     round: 1,
     paused: false,
@@ -538,29 +539,76 @@ const state = {
 // STAGE
 // =============================================================================
 
-function createStage() {
+// Level configurations
+const LEVELS = [
+    {
+        name: 'Dojo',
+        platforms: (W, H) => [
+            { x: 0, y: H - 32, w: W, h: 32 },           // Ground
+            { x: 0, y: 0, w: 32, h: H - 32 },           // Left wall
+            { x: W - 32, y: 0, w: 32, h: H - 32 },      // Right wall
+            { x: 120, y: H - 140, w: 120, h: 16 },
+            { x: W - 240, y: H - 140, w: 120, h: 16 },
+            { x: W/2 - 80, y: H - 220, w: 160, h: 16 },
+            { x: 60, y: H - 300, w: 100, h: 16 },
+            { x: W - 160, y: H - 300, w: 100, h: 16 },
+        ],
+    },
+    {
+        name: 'Tower',
+        platforms: (W, H) => [
+            { x: 0, y: H - 32, w: W, h: 32 },           // Ground
+            { x: 0, y: 0, w: 32, h: H - 32 },           // Left wall
+            { x: W - 32, y: 0, w: 32, h: H - 32 },      // Right wall
+            { x: W/2 - 60, y: H - 100, w: 120, h: 16 }, // Center stack
+            { x: W/2 - 80, y: H - 180, w: 160, h: 16 },
+            { x: W/2 - 60, y: H - 260, w: 120, h: 16 },
+            { x: W/2 - 40, y: H - 340, w: 80, h: 16 },
+            { x: 60, y: H - 200, w: 80, h: 16 },        // Side perches
+            { x: W - 140, y: H - 200, w: 80, h: 16 },
+        ],
+    },
+    {
+        name: 'Pit',
+        platforms: (W, H) => [
+            { x: 0, y: H - 32, w: 200, h: 32 },         // Left ground
+            { x: W - 200, y: H - 32, w: 200, h: 32 },   // Right ground
+            { x: 0, y: 0, w: 32, h: H - 32 },           // Left wall
+            { x: W - 32, y: 0, w: 32, h: H - 32 },      // Right wall
+            { x: W/2 - 50, y: H - 80, w: 100, h: 16 },  // Pit bridge
+            { x: 80, y: H - 150, w: 100, h: 16 },
+            { x: W - 180, y: H - 150, w: 100, h: 16 },
+            { x: W/2 - 70, y: H - 230, w: 140, h: 16 },
+            { x: 40, y: H - 300, w: 120, h: 16 },
+            { x: W - 160, y: H - 300, w: 120, h: 16 },
+        ],
+    },
+    {
+        name: 'Scattered',
+        platforms: (W, H) => [
+            { x: 0, y: H - 32, w: W, h: 32 },           // Ground
+            { x: 0, y: 0, w: 32, h: H - 32 },           // Left wall
+            { x: W - 32, y: 0, w: 32, h: H - 32 },      // Right wall
+            { x: 80, y: H - 100, w: 80, h: 16 },
+            { x: W - 160, y: H - 130, w: 80, h: 16 },
+            { x: 200, y: H - 180, w: 80, h: 16 },
+            { x: W/2 - 40, y: H - 140, w: 80, h: 16 },
+            { x: W - 280, y: H - 230, w: 80, h: 16 },
+            { x: 120, y: H - 280, w: 80, h: 16 },
+            { x: W/2 - 40, y: H - 320, w: 80, h: 16 },
+            { x: W - 200, y: H - 350, w: 80, h: 16 },
+        ],
+    },
+];
+
+function createStage(levelIndex) {
     const W = CONFIG.WIDTH;
     const H = CONFIG.HEIGHT;
     
-    state.platforms = [
-        // Ground
-        { x: 0, y: H - 32, w: W, h: 32 },
-        
-        // Left wall
-        { x: 0, y: 0, w: 32, h: H - 32 },
-        
-        // Right wall
-        { x: W - 32, y: 0, w: 32, h: H - 32 },
-        
-        // Floating platforms (doubled)
-        { x: 120, y: H - 140, w: 120, h: 16 },
-        { x: W - 240, y: H - 140, w: 120, h: 16 },
-        { x: W/2 - 80, y: H - 220, w: 160, h: 16 },
-        
-        // Upper platforms (doubled)
-        { x: 60, y: H - 300, w: 100, h: 16 },
-        { x: W - 160, y: H - 300, w: 100, h: 16 },
-    ];
+    // Use specified level or random
+    const level = LEVELS[levelIndex !== undefined ? levelIndex : Math.floor(Math.random() * LEVELS.length)];
+    state.currentLevel = level.name;
+    state.platforms = level.platforms(W, H);
 }
 
 // =============================================================================
@@ -1567,14 +1615,38 @@ function drawDebug(ctx) {
 // UI
 // =============================================================================
 
+function createPips(count, maxCount, cssClass) {
+    let html = '';
+    for (let i = 0; i < maxCount; i++) {
+        const filled = i < count;
+        html += `<div class="pip ${cssClass} ${filled ? '' : 'empty'}"></div>`;
+    }
+    return html;
+}
+
 function updateUI() {
-    // Show player lives
+    // Show player health pips
     const player = state.players[0];
-    document.getElementById('p1-lives').textContent = player ? '❤'.repeat(player.lives) : '';
+    const playerPips = document.getElementById('p1-pips');
+    if (playerPips && player) {
+        playerPips.innerHTML = createPips(player.lives, CONFIG.LIVES_PER_CHARACTER, 'player');
+    }
     
-    // Show enemy lives (sum of all enemy lives remaining)
-    const enemyLives = state.players.slice(1).reduce((sum, p) => sum + Math.max(0, p.lives), 0);
-    document.getElementById('p2-lives').textContent = '❤'.repeat(enemyLives);
+    // Show individual enemy health bars
+    const enemyContainer = document.getElementById('enemy-health-container');
+    if (enemyContainer) {
+        enemyContainer.innerHTML = '';
+        const enemies = state.players.slice(1);
+        enemies.forEach((enemy, idx) => {
+            const row = document.createElement('div');
+            row.className = 'health-row';
+            row.innerHTML = `
+                <span class="char-label enemy">ENEMY ${idx + 1}</span>
+                <span class="health-pips">${createPips(enemy.lives, CONFIG.LIVES_PER_CHARACTER, 'enemy')}</span>
+            `;
+            enemyContainer.appendChild(row);
+        });
+    }
     
     document.getElementById('round-info').textContent = `ROUND ${state.round}`;
     
@@ -1624,6 +1696,9 @@ function checkGameOver() {
 }
 
 function resetMatch() {
+    // Select random level
+    createStage();
+    
     // Reset all lives and respawn everyone
     for (const p of state.players) {
         p.lives = CONFIG.LIVES_PER_CHARACTER;
@@ -1635,6 +1710,7 @@ function resetMatch() {
     }
     state.bullets = [];
     state.particles = [];
+    state.slashEffects = [];
     updateUI();
     hideMessage();
     showMessage('FIGHT!', 60);
@@ -1657,6 +1733,7 @@ function init() {
     // Setup audio controls
     setupAudioControls();
     
+    // Create first stage (random)
     createStage();
     
     // Create player

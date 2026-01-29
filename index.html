@@ -9,15 +9,14 @@
 <body>
     <canvas id="game"></canvas>
     <div id="ui">
-        <div id="p1-score">
-            <span class="label">PLAYER</span>
-            <span class="lives" id="p1-lives">❤❤❤❤❤</span>
+        <div id="health-bars">
+            <div class="health-row" id="player-health">
+                <span class="char-label">PLAYER</span>
+                <span class="health-pips" id="p1-pips"></span>
+            </div>
+            <div id="enemy-health-container"></div>
         </div>
         <div id="round-info">ROUND 1</div>
-        <div id="p2-score">
-            <span class="label">ENEMIES</span>
-            <span class="lives" id="p2-lives">❤❤❤❤❤❤❤❤❤❤❤❤❤❤❤</span>
-        </div>
     </div>
     <div id="message" class="hidden"></div>
     <div id="audio-controls">
