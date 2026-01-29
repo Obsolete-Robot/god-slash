@@ -828,6 +828,8 @@ const state = {
     particles: [],
     slashEffects: [],
     spawnTelegraphs: [], // Respawn telegraph effects
+    bloodBalls: [],      // Flying blood projectiles that drip and splash
+    dashEchoes: [],      // Afterimage echoes when dashing
     platforms: [],
     currentLevel: '',
     currentLevelIndex: 0,
@@ -999,6 +1001,7 @@ class Player {
         this.pendingClash = false;
         this.pendingClashKnockbackX = 0;
         this.pendingClashKnockbackY = 0;
+        this.clashGlowTimer = 0; // Glowing white border during/after clash
         
         // AI state
         this.aiTarget = null;
@@ -1038,6 +1041,7 @@ class Player {
         if (this.movementLockTimer > 0) this.movementLockTimer--;
         if (this.invulnTimer > 0) this.invulnTimer--;
         if (this.spawnEffectTimer > 0) this.spawnEffectTimer--;
+        if (this.clashGlowTimer > 0) this.clashGlowTimer--;
         
         // Handle input
         if (this.isAI) {
@@ -1058,6 +1062,10 @@ class Player {
         // Update dash
         if (this.dashing) {
             this.dashTimer--;
+            // Spawn echo every 2 frames during dash
+            if (this.dashTimer % 2 === 0 && this.dashTimer > 0) {
+                spawnDashEcho(this);
+            }
             if (this.dashTimer <= 0) this.dashing = false;
         }
     }
@@ -1401,6 +1409,8 @@ class Player {
         this.vx = this.dashDir * CONFIG.PLAYER_DASH_SPEED;
         this.vy = 0;
         spawnParticles(this.x, this.y + this.h/2, 5, this.color);
+        // Spawn initial dash echo
+        spawnDashEcho(this);
         playDashSound();
     }
     
@@ -1517,10 +1527,14 @@ class Player {
                     this.pendingClash = true;
                     other.pendingClash = true;
                     
-                    // Clash particles - slick radial spark burst
+                    // Set clash glow on both players
+                    this.clashGlowTimer = 25;
+                    other.clashGlowTimer = 25;
+                    
+                    // Enhanced clash particles - bigger radial spark burst
                     const clashX = (this.x + other.x) / 2 + 8;
                     const clashY = (this.y + other.y) / 2 + 10;
-                    spawnClashParticles(clashX, clashY);
+                    spawnEnhancedClashParticles(clashX, clashY);
                     
                     // Trigger hit stop for clash
                     state.hitStopTimer = CONFIG.CLASH_HIT_STOP_DURATION;
@@ -1541,8 +1555,11 @@ class Player {
                     const hitX = otherCx;
                     const hitY = otherCy;
                     
-                    // Blood particles
+                    // Blood particles (small spray)
                     spawnBloodParticles(hitX, hitY, 25, this.facing);
+                    
+                    // Blood balls - flying chunks that drip and splash
+                    spawnBloodBalls(hitX, hitY, this.slashDir.x, this.slashDir.y);
                     
                     // Store knockback for after hit stop
                     other.pendingKnockbackX = this.facing * CONFIG.HIT_STUN_KNOCKBACK;
@@ -1879,11 +1896,41 @@ class Player {
             const drawY = this.y + (this.h - spriteH);
             
             ctx.drawImage(sprite, drawX, drawY);
+            
+            // Clash glow effect - white glowing border
+            if (this.clashGlowTimer > 0) {
+                const glowAlpha = this.clashGlowTimer / 25;
+                ctx.save();
+                ctx.globalAlpha = glowAlpha;
+                ctx.shadowColor = '#fff';
+                ctx.shadowBlur = 15 + (this.clashGlowTimer / 25) * 10;
+                ctx.globalCompositeOperation = 'source-over';
+                // Draw sprite again with glow
+                ctx.drawImage(sprite, drawX, drawY);
+                // Draw white overlay
+                ctx.globalCompositeOperation = 'source-atop';
+                ctx.fillStyle = `rgba(255, 255, 255, ${glowAlpha * 0.5})`;
+                ctx.fillRect(drawX, drawY, spriteW, spriteH);
+                ctx.restore();
+            }
+            
             ctx.restore();
         } else {
             // Fallback to colored rectangle
             ctx.fillStyle = this.isAI ? COLORS.player2 : COLORS.player1;
             ctx.fillRect(this.x, this.y, this.w, this.h);
+            
+            // Clash glow for fallback
+            if (this.clashGlowTimer > 0) {
+                const glowAlpha = this.clashGlowTimer / 25;
+                ctx.save();
+                ctx.shadowColor = '#fff';
+                ctx.shadowBlur = 15 + (this.clashGlowTimer / 25) * 10;
+                ctx.strokeStyle = `rgba(255, 255, 255, ${glowAlpha})`;
+                ctx.lineWidth = 3;
+                ctx.strokeRect(this.x - 1, this.y - 1, this.w + 2, this.h + 2);
+                ctx.restore();
+            }
         }
         
         // Slash effect is drawn in drawSlashEffects() - removed from here to avoid double render
@@ -2133,6 +2180,284 @@ function drawSpawnTelegraphs(ctx) {
     }
 }
 
+// =============================================================================
+// BLOOD BALL SYSTEM - Flying blood projectiles that drip and splash
+// =============================================================================
+
+function spawnBloodBalls(x, y, slashDirX, slashDirY) {
+    const ballCount = 4 + Math.floor(Math.random() * 3); // 4-6 balls
+    
+    for (let i = 0; i < ballCount; i++) {
+        // Main direction follows slash, with spread
+        const spreadAngle = (Math.random() - 0.5) * 0.8;
+        let baseAngle;
+        if (slashDirX !== 0) {
+            baseAngle = slashDirX > 0 ? 0 : Math.PI;
+        } else {
+            baseAngle = slashDirY > 0 ? Math.PI / 2 : -Math.PI / 2;
+        }
+        const angle = baseAngle + spreadAngle;
+        const speed = 6 + Math.random() * 6;
+        
+        state.bloodBalls.push({
+            x: x + (Math.random() - 0.5) * 10,
+            y: y + (Math.random() - 0.5) * 10,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed - 2, // Slight upward bias
+            size: 6 + Math.random() * 6, // Medium sized balls
+            life: 120,
+            dripTimer: 0,
+            dripInterval: 3 + Math.floor(Math.random() * 3), // Drip every 3-5 frames
+        });
+    }
+}
+
+function updateBloodBalls() {
+    for (let i = state.bloodBalls.length - 1; i >= 0; i--) {
+        const b = state.bloodBalls[i];
+        
+        // Physics
+        b.x += b.vx;
+        b.y += b.vy;
+        b.vy += 0.4; // Gravity
+        b.vx *= 0.99; // Air resistance
+        
+        b.life--;
+        
+        // Drip blood drops while flying
+        b.dripTimer++;
+        if (b.dripTimer >= b.dripInterval) {
+            b.dripTimer = 0;
+            // Spawn small drip particle
+            state.particles.push({
+                x: b.x,
+                y: b.y,
+                vx: (Math.random() - 0.5) * 1,
+                vy: Math.random() * 2,
+                life: 20 + Math.random() * 15,
+                color: Math.random() < 0.6 ? COLORS.blood : COLORS.bloodLight,
+                size: 2 + Math.random() * 2,
+                gravity: 0.35,
+            });
+        }
+        
+        // Check collision with platforms for splash
+        let splashed = false;
+        for (const p of state.platforms) {
+            if (b.x > p.x && b.x < p.x + p.w &&
+                b.y > p.y && b.y < p.y + p.h) {
+                // Splash on impact!
+                spawnBloodSplash(b.x, b.y, b.vx, b.vy, b.size);
+                splashed = true;
+                break;
+            }
+        }
+        
+        // Remove if splashed, out of bounds, or expired
+        if (splashed || b.life <= 0 || 
+            b.x < -50 || b.x > CONFIG.WIDTH + 50 || 
+            b.y > CONFIG.HEIGHT + 50) {
+            state.bloodBalls.splice(i, 1);
+        }
+    }
+}
+
+function spawnBloodSplash(x, y, vx, vy, size) {
+    // Splash particles spread based on impact velocity
+    const impactSpeed = Math.sqrt(vx * vx + vy * vy);
+    const splashCount = Math.floor(size * 1.5) + 5;
+    
+    for (let i = 0; i < splashCount; i++) {
+        // Spread outward from impact point
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 1 + Math.random() * (impactSpeed * 0.4);
+        
+        state.particles.push({
+            x: x + (Math.random() - 0.5) * 6,
+            y: y + (Math.random() - 0.5) * 4,
+            vx: Math.cos(angle) * speed + vx * 0.2,
+            vy: Math.sin(angle) * speed * 0.5 - Math.abs(vy) * 0.3, // Bounce up
+            life: 25 + Math.random() * 20,
+            color: Math.random() < 0.7 ? COLORS.blood : COLORS.bloodLight,
+            size: 2 + Math.random() * 3,
+            gravity: 0.4,
+        });
+    }
+    
+    // Add a few larger splatter globs
+    for (let i = 0; i < 3; i++) {
+        const angle = Math.random() * Math.PI - Math.PI / 2; // Mostly upward
+        state.particles.push({
+            x: x,
+            y: y,
+            vx: Math.cos(angle) * (2 + Math.random() * 3),
+            vy: -2 - Math.random() * 4,
+            life: 30 + Math.random() * 20,
+            color: COLORS.blood,
+            size: 4 + Math.random() * 3,
+            gravity: 0.5,
+        });
+    }
+}
+
+function drawBloodBalls(ctx) {
+    for (const b of state.bloodBalls) {
+        const alpha = Math.min(1, b.life / 30);
+        ctx.globalAlpha = alpha;
+        
+        // Draw as circle with darker edge
+        ctx.fillStyle = COLORS.blood;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.size / 2, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Highlight
+        ctx.fillStyle = COLORS.bloodLight;
+        ctx.beginPath();
+        ctx.arc(b.x - b.size * 0.15, b.y - b.size * 0.15, b.size * 0.25, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+}
+
+// =============================================================================
+// DASH ECHO SYSTEM - Afterimage trails when dashing
+// =============================================================================
+
+function spawnDashEcho(player) {
+    state.dashEchoes.push({
+        x: player.x,
+        y: player.y,
+        w: player.w,
+        h: player.h,
+        facing: player.facing,
+        isAI: player.isAI,
+        enemyIndex: player.enemyIndex,
+        life: 15,
+        maxLife: 15,
+    });
+}
+
+function updateDashEchoes() {
+    for (let i = state.dashEchoes.length - 1; i >= 0; i--) {
+        state.dashEchoes[i].life--;
+        if (state.dashEchoes[i].life <= 0) {
+            state.dashEchoes.splice(i, 1);
+        }
+    }
+}
+
+function drawDashEchoes(ctx) {
+    for (const echo of state.dashEchoes) {
+        const alpha = (echo.life / echo.maxLife) * 0.6;
+        ctx.globalAlpha = alpha;
+        
+        // Get the appropriate sprite
+        let sprite;
+        if (echo.isAI) {
+            sprite = ASSETS.enemies[echo.enemyIndex % ASSETS.enemies.length];
+        } else {
+            sprite = ASSETS.player;
+        }
+        
+        // Draw ghostly echo
+        if (sprite && sprite.complete && sprite.naturalWidth > 0) {
+            const spriteW = sprite.naturalWidth;
+            const spriteH = sprite.naturalHeight;
+            
+            ctx.save();
+            
+            // Flip horizontally if facing left
+            if (echo.facing === -1) {
+                ctx.translate(echo.x + echo.w / 2, 0);
+                ctx.scale(-1, 1);
+                ctx.translate(-(echo.x + echo.w / 2), 0);
+            }
+            
+            // Center sprite on hitbox
+            const drawX = echo.x + (echo.w - spriteW) / 2;
+            const drawY = echo.y + (echo.h - spriteH);
+            
+            // Tint the echo (cyan for player, red for enemies)
+            ctx.filter = echo.isAI ? 'hue-rotate(0deg) brightness(1.5)' : 'hue-rotate(180deg) brightness(1.5)';
+            ctx.drawImage(sprite, drawX, drawY);
+            ctx.filter = 'none';
+            
+            ctx.restore();
+        } else {
+            // Fallback rectangle
+            ctx.fillStyle = echo.isAI ? 'rgba(255, 100, 100, 0.5)' : 'rgba(100, 200, 255, 0.5)';
+            ctx.fillRect(echo.x, echo.y, echo.w, echo.h);
+        }
+    }
+    ctx.globalAlpha = 1;
+}
+
+// =============================================================================
+// ENHANCED CLASH EFFECTS
+// =============================================================================
+
+function spawnEnhancedClashParticles(x, y) {
+    // Bigger center flash
+    state.particles.push({
+        x, y,
+        vx: 0, vy: 0,
+        life: 18,
+        color: '#fff',
+        size: 24,
+        isFlash: true,
+    });
+    
+    // More radial sparks shooting outward
+    const sparkCount = 35;
+    for (let i = 0; i < sparkCount; i++) {
+        const angle = (i / sparkCount) * Math.PI * 2;
+        const speed = 6 + Math.random() * 8;
+        state.particles.push({
+            x: x + (Math.random() - 0.5) * 6,
+            y: y + (Math.random() - 0.5) * 6,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            life: 20 + Math.random() * 15,
+            color: Math.random() < 0.4 ? '#fff' : (Math.random() < 0.5 ? '#ffee88' : '#fbbf24'),
+            size: 2 + Math.random() * 3,
+            gravity: 0.15,
+            trail: true,
+        });
+    }
+    
+    // Ring of bright sparks
+    for (let i = 0; i < 16; i++) {
+        const angle = (i / 16) * Math.PI * 2;
+        const speed = 10 + Math.random() * 4;
+        state.particles.push({
+            x, y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            life: 12,
+            color: '#fff',
+            size: 4,
+            gravity: 0,
+            trail: true,
+        });
+    }
+    
+    // Extra golden sparks
+    for (let i = 0; i < 15; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 4 + Math.random() * 10;
+        state.particles.push({
+            x, y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed - 3,
+            life: 25 + Math.random() * 20,
+            color: '#fbbf24',
+            size: 3 + Math.random() * 2,
+            gravity: 0.3,
+        });
+    }
+}
+
 // Debug mode - draw collision boxes
 function drawDebug(ctx) {
     if (!state.debugMode) return;
@@ -2375,6 +2700,8 @@ function update() {
     updateParticles();
     updateSlashEffects();
     updateSpawnTelegraphs();
+    updateBloodBalls();
+    updateDashEchoes();
     
     // Screen shake decay
     if (state.screenShake > 0) state.screenShake *= 0.9;
@@ -2434,7 +2761,11 @@ function draw() {
     drawSpawnTelegraphs(ctx);
     drawSlashEffects(ctx);
     drawBullets(ctx);
+    drawBloodBalls(ctx);
     drawParticles(ctx);
+    
+    // Draw dash echoes (behind players)
+    drawDashEchoes(ctx);
     
     // Draw players
     for (const p of state.players) p.draw(ctx);
