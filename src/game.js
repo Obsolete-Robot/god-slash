@@ -734,6 +734,7 @@ const state = {
     bullets: [],
     particles: [],
     slashEffects: [],
+    spawnTelegraphs: [], // Respawn telegraph effects
     platforms: [],
     currentLevel: '',
     currentLevelIndex: 0,
@@ -1658,6 +1659,30 @@ class Player {
         spawnParticles(this.x + this.w/2, this.y + this.h/2, 20, this.color);
         state.screenShake = 10;
         playDeathSound();
+        
+        // Create spawn telegraph at future respawn location
+        if (this.lives > 0) {
+            const spawnPoints = [
+                { x: 120, y: CONFIG.HEIGHT - 120 },
+                { x: CONFIG.WIDTH - 160, y: CONFIG.HEIGHT - 120 },
+                { x: CONFIG.WIDTH / 2, y: CONFIG.HEIGHT - 260 },
+                { x: 160, y: CONFIG.HEIGHT - 340 },
+                { x: CONFIG.WIDTH - 200, y: CONFIG.HEIGHT - 340 },
+            ];
+            const spawn = spawnPoints[Math.floor(Math.random() * spawnPoints.length)];
+            this.pendingSpawnX = spawn.x + this.w / 2;
+            this.pendingSpawnY = spawn.y + this.h / 2;
+            
+            state.spawnTelegraphs.push({
+                x: this.pendingSpawnX,
+                y: this.pendingSpawnY,
+                timer: CONFIG.RESPAWN_TIME,
+                maxTimer: CONFIG.RESPAWN_TIME,
+                color: this.isAI ? '#f44' : '#4af',
+                owner: this,
+            });
+        }
+        
         updateUI();
         checkGameOver();
     }
@@ -1666,17 +1691,24 @@ class Player {
         if (this.lives <= 0) return; // Stay dead if no lives
         this.alive = true;
         
-        // Pick random spawn location
-        const spawnPoints = [
-            { x: 120, y: CONFIG.HEIGHT - 120 },
-            { x: CONFIG.WIDTH - 160, y: CONFIG.HEIGHT - 120 },
-            { x: CONFIG.WIDTH / 2, y: CONFIG.HEIGHT - 260 },
-            { x: 160, y: CONFIG.HEIGHT - 340 },
-            { x: CONFIG.WIDTH - 200, y: CONFIG.HEIGHT - 340 },
-        ];
-        const spawn = spawnPoints[Math.floor(Math.random() * spawnPoints.length)];
-        this.x = spawn.x;
-        this.y = spawn.y;
+        // Use pending spawn location from telegraph, or pick random
+        if (this.pendingSpawnX !== undefined) {
+            this.x = this.pendingSpawnX - this.w / 2;
+            this.y = this.pendingSpawnY - this.h / 2;
+            this.pendingSpawnX = undefined;
+            this.pendingSpawnY = undefined;
+        } else {
+            const spawnPoints = [
+                { x: 120, y: CONFIG.HEIGHT - 120 },
+                { x: CONFIG.WIDTH - 160, y: CONFIG.HEIGHT - 120 },
+                { x: CONFIG.WIDTH / 2, y: CONFIG.HEIGHT - 260 },
+                { x: 160, y: CONFIG.HEIGHT - 340 },
+                { x: CONFIG.WIDTH - 200, y: CONFIG.HEIGHT - 340 },
+            ];
+            const spawn = spawnPoints[Math.floor(Math.random() * spawnPoints.length)];
+            this.x = spawn.x;
+            this.y = spawn.y;
+        }
         
         this.vx = 0;
         this.vy = 0;
@@ -1955,6 +1987,57 @@ function drawSlashEffects(ctx) {
     }
 }
 
+// Spawn telegraph - concentric rings shrinking
+function updateSpawnTelegraphs() {
+    for (let i = state.spawnTelegraphs.length - 1; i >= 0; i--) {
+        state.spawnTelegraphs[i].timer--;
+        if (state.spawnTelegraphs[i].timer <= 0) {
+            state.spawnTelegraphs.splice(i, 1);
+        }
+    }
+}
+
+function drawSpawnTelegraphs(ctx) {
+    for (const t of state.spawnTelegraphs) {
+        const progress = 1 - (t.timer / t.maxTimer); // 0 to 1
+        const numRings = 4;
+        
+        ctx.save();
+        ctx.strokeStyle = t.color;
+        ctx.lineWidth = 2;
+        
+        for (let i = 0; i < numRings; i++) {
+            // Each ring starts at different time and shrinks to center
+            const ringDelay = i * 0.2;
+            const ringProgress = Math.max(0, Math.min(1, (progress - ringDelay) / (1 - ringDelay)));
+            
+            if (ringProgress > 0 && ringProgress < 1) {
+                const maxRadius = 80 + i * 20;
+                const radius = maxRadius * (1 - ringProgress);
+                const alpha = 0.8 - ringProgress * 0.6;
+                
+                ctx.globalAlpha = alpha;
+                ctx.beginPath();
+                ctx.arc(t.x, t.y, radius, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+        }
+        
+        // Center point grows as rings converge
+        if (progress > 0.7) {
+            const centerAlpha = (progress - 0.7) / 0.3;
+            const centerSize = centerAlpha * 8;
+            ctx.globalAlpha = centerAlpha;
+            ctx.fillStyle = t.color;
+            ctx.beginPath();
+            ctx.arc(t.x, t.y, centerSize, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        ctx.restore();
+    }
+}
+
 // Debug mode - draw collision boxes
 function drawDebug(ctx) {
     if (!state.debugMode) return;
@@ -2196,6 +2279,7 @@ function update() {
     updateBullets();
     updateParticles();
     updateSlashEffects();
+    updateSpawnTelegraphs();
     
     // Screen shake decay
     if (state.screenShake > 0) state.screenShake *= 0.9;
@@ -2252,6 +2336,7 @@ function draw() {
     }
     
     // Draw effects
+    drawSpawnTelegraphs(ctx);
     drawSlashEffects(ctx);
     drawBullets(ctx);
     drawParticles(ctx);
