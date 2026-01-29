@@ -69,7 +69,7 @@ const CONFIG = {
     
     // Game
     LIVES_PER_CHARACTER: 5,
-    RESPAWN_TIME: 75,
+    RESPAWN_TIME: 45, // Reduced to 60% of original (was 75)
     RESPAWN_INVULN: 90, // Invulnerability frames after respawn (~1.5 sec)
     ENEMY_COUNT: 3,
     
@@ -396,6 +396,99 @@ function playDeathSound() {
     osc2.connect(gain2).connect(ctx.destination);
     osc2.start(now);
     osc2.stop(now + 0.15);
+}
+
+// Dash sound - quick whoosh
+function playDashSound() {
+    if (!AUDIO.ctx) initAudio();
+    const ctx = AUDIO.ctx;
+    const now = ctx.currentTime;
+    
+    // Fast whoosh with noise
+    const bufferSize = ctx.sampleRate * 0.15;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+        // Filtered noise that sweeps down
+        const t = i / bufferSize;
+        data[i] = (Math.random() * 2 - 1) * (1 - t) * Math.sin(t * 50);
+    }
+    const noise = ctx.createBufferSource();
+    const noiseGain = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(2000, now);
+    filter.frequency.exponentialRampToValueAtTime(500, now + 0.12);
+    filter.Q.value = 1;
+    
+    noise.buffer = buffer;
+    noiseGain.gain.setValueAtTime(0.3, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+    noise.connect(filter).connect(noiseGain).connect(ctx.destination);
+    noise.start(now);
+    
+    // Add a quick pitch sweep
+    const osc = ctx.createOscillator();
+    const oscGain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(400, now);
+    osc.frequency.exponentialRampToValueAtTime(150, now + 0.08);
+    oscGain.gain.setValueAtTime(0.15, now);
+    oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+    osc.connect(oscGain).connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.1);
+}
+
+// Respawn sound - ethereal materialization
+function playRespawnSound() {
+    if (!AUDIO.ctx) initAudio();
+    const ctx = AUDIO.ctx;
+    const now = ctx.currentTime;
+    
+    // Rising shimmer
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(200, now);
+    osc1.frequency.exponentialRampToValueAtTime(800, now + 0.2);
+    gain1.gain.setValueAtTime(0.01, now);
+    gain1.gain.linearRampToValueAtTime(0.25, now + 0.1);
+    gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+    osc1.connect(gain1).connect(ctx.destination);
+    osc1.start(now);
+    osc1.stop(now + 0.3);
+    
+    // Harmonic layer
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = 'triangle';
+    osc2.frequency.setValueAtTime(400, now);
+    osc2.frequency.exponentialRampToValueAtTime(1200, now + 0.15);
+    gain2.gain.setValueAtTime(0.01, now);
+    gain2.gain.linearRampToValueAtTime(0.15, now + 0.08);
+    gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+    osc2.connect(gain2).connect(ctx.destination);
+    osc2.start(now);
+    osc2.stop(now + 0.25);
+    
+    // Sparkle noise burst
+    const bufferSize = ctx.sampleRate * 0.1;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 2);
+    }
+    const noise = ctx.createBufferSource();
+    const noiseGain = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'highpass';
+    filter.frequency.value = 3000;
+    noise.buffer = buffer;
+    noiseGain.gain.setValueAtTime(0.1, now + 0.05);
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+    noise.connect(filter).connect(noiseGain).connect(ctx.destination);
+    noise.start(now + 0.05);
 }
 
 // =============================================================================
@@ -1308,6 +1401,7 @@ class Player {
         this.vx = this.dashDir * CONFIG.PLAYER_DASH_SPEED;
         this.vy = 0;
         spawnParticles(this.x, this.y + this.h/2, 5, this.color);
+        playDashSound();
     }
     
     slash() {
@@ -1728,6 +1822,7 @@ class Player {
         
         // Spawn particles
         spawnParticles(this.x + this.w/2, this.y + this.h/2, 15, '#fff');
+        playRespawnSound();
         
         updateUI();
     }
