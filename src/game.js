@@ -1076,32 +1076,44 @@ class Player {
                 break;
                 
             case 'wander':
-                // Move in current wander direction
-                this.vx = this.aiWanderDir * CONFIG.PLAYER_SPEED * 0.6;
-                this.facing = this.aiWanderDir;
+                // Move in current wander direction with momentum
+                this.aiAccelerate(this.aiWanderDir);
                 
-                // Change direction at walls or randomly
+                // Change direction at walls (but commit for a while)
                 if (this.x < 60 || this.wallDir === -1) this.aiWanderDir = 1;
                 else if (this.x > CONFIG.WIDTH - 60 || this.wallDir === 1) this.aiWanderDir = -1;
-                else if (Math.random() < 0.02) this.aiWanderDir *= -1;
+                else if (Math.random() < 0.005) this.aiWanderDir *= -1; // Less frequent direction changes
                 
                 // Random jump while wandering
                 if (this.grounded && Math.random() < 0.03) {
                     this.vy = CONFIG.PLAYER_JUMP * 0.8;
                 }
+                
+                // Occasionally drop through platforms
+                if (this.grounded && Math.random() < 0.01) {
+                    this.dropThroughTimer = 10;
+                    this.grounded = false;
+                }
                 break;
                 
             case 'chase':
-                this.vx = Math.sign(dx) * CONFIG.PLAYER_SPEED;
+                // Chase with momentum - commit to horizontal direction
+                this.aiAccelerate(Math.sign(dx));
                 this.facing = dx > 0 ? 1 : -1;
                 
-                // Jump if target is above
-                if (dy < -40 && this.grounded) {
+                // Only jump if target is significantly above AND we're not already above them
+                if (dy < -60 && this.grounded && Math.random() < 0.1) {
                     this.vy = CONFIG.PLAYER_JUMP;
                 }
-                // Jump gaps
-                if (this.grounded && Math.random() < 0.05) {
+                // Random jump gaps (less frequent)
+                if (this.grounded && Math.random() < 0.02) {
                     this.vy = CONFIG.PLAYER_JUMP * 0.9;
+                }
+                
+                // Drop through platform if target is below
+                if (dy > 40 && this.grounded && Math.random() < 0.05) {
+                    this.dropThroughTimer = 10;
+                    this.grounded = false;
                 }
                 break;
                 
@@ -1126,8 +1138,8 @@ class Player {
                     this.aiAction = 'retreat';
                     this.aiDecisionTimer = 20;
                 } else if (dist < CONFIG.SLASH_WIDTH * 2.5) {
-                    // Close in for attack
-                    this.vx = Math.sign(dx) * CONFIG.PLAYER_SPEED;
+                    // Close in for attack with momentum
+                    this.aiAccelerate(Math.sign(dx));
                     // Random whiff while approaching
                     if (Math.random() < 0.03 && this.slashCooldown <= 0) {
                         this.aiRandomSlash();
@@ -1136,9 +1148,10 @@ class Player {
                 break;
                 
             case 'retreat':
-                this.vx = -Math.sign(dx) * CONFIG.PLAYER_SPEED;
-                this.facing = dx > 0 ? 1 : -1; // Still face player
-                if (this.grounded && Math.random() < 0.15) {
+                // Retreat with momentum - commit to direction
+                this.aiAccelerate(-Math.sign(dx));
+                this.facing = dx > 0 ? 1 : -1; // Still face target
+                if (this.grounded && Math.random() < 0.08) {
                     this.vy = CONFIG.PLAYER_JUMP * 0.7;
                 }
                 break;
@@ -1161,12 +1174,30 @@ class Player {
         }
     }
     
+    aiAccelerate(dir) {
+        // AI uses momentum-based movement like player
+        const accel = this.grounded ? CONFIG.PLAYER_ACCEL : CONFIG.PLAYER_AIR_ACCEL;
+        const maxSpeed = CONFIG.PLAYER_SPEED * 0.9; // Slightly slower than player
+        
+        if (dir < 0) {
+            this.vx -= accel;
+            if (this.vx < -maxSpeed) this.vx = -maxSpeed;
+            this.facing = -1;
+        } else if (dir > 0) {
+            this.vx += accel;
+            if (this.vx > maxSpeed) this.vx = maxSpeed;
+            this.facing = 1;
+        }
+    }
+    
     aiWander() {
-        this.vx = this.aiWanderDir * CONFIG.PLAYER_SPEED * 0.5;
-        this.facing = this.aiWanderDir;
+        // Wander with momentum
+        this.aiAccelerate(this.aiWanderDir);
+        
         if (this.x < 60) this.aiWanderDir = 1;
         else if (this.x > CONFIG.WIDTH - 60) this.aiWanderDir = -1;
-        else if (Math.random() < 0.01) this.aiWanderDir *= -1;
+        else if (Math.random() < 0.005) this.aiWanderDir *= -1; // Less direction changes
+        
         if (this.grounded && Math.random() < 0.02) this.vy = CONFIG.PLAYER_JUMP * 0.7;
         
         // Occasional whiff attack while wandering
