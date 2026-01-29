@@ -124,6 +124,10 @@ function loadAssets() {
         if (loadCount >= totalAssets) {
             ASSETS.loaded = true;
             console.log('All assets loaded!');
+            // Now that videos are loaded, switch to the correct one
+            if (state.pendingBgVideoIndex !== undefined) {
+                switchBackgroundVideo(state.pendingBgVideoIndex);
+            }
         }
     }
     
@@ -131,10 +135,6 @@ function loadAssets() {
     BG_VIDEOS.forEach((src, idx) => {
         const video = createVideoElement(src);
         video.oncanplaythrough = () => {
-            if (idx === 0) {
-                video.play().catch(() => {});
-                ASSETS.currentBgVideo = video;
-            }
             onLoad();
         };
         video.onerror = onLoad;
@@ -163,6 +163,14 @@ function loadAssets() {
 }
 
 function switchBackgroundVideo(levelIndex) {
+    // Store pending level in case videos aren't loaded yet
+    state.pendingBgVideoIndex = levelIndex;
+    
+    // Check if videos are loaded
+    if (!ASSETS.bgVideos.length || !ASSETS.bgVideos[levelIndex % ASSETS.bgVideos.length]) {
+        return; // Will be called again when videos load
+    }
+    
     // Pause current video
     if (ASSETS.currentBgVideo) {
         ASSETS.currentBgVideo.pause();
@@ -561,6 +569,7 @@ const state = {
     platforms: [],
     currentLevel: '',
     currentLevelIndex: 0,
+    pendingBgVideoIndex: undefined,
     screenShake: 0,
     round: 1,
     paused: false,
