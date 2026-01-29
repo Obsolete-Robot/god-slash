@@ -418,13 +418,14 @@ function drawOni(ctx, x, y, w, h, facing, frame, stunned) {
     ctx.restore();
 }
 
-// Draw crescent moon slash effect - supports 4 directions
-function drawSlashCrescent(ctx, x, y, dirX, dirY, progress) {
+// Draw Strider-like slash swoosh - single frame
+function drawSlashSwoosh(ctx, x, y, dirX, dirY, progress) {
     ctx.save();
     ctx.translate(x, y);
     
-    const alpha = 1 - progress * 0.7;
-    const scale = 1.0 + progress * 1.6; // Doubled scale for larger resolution
+    // Fade out over duration
+    const alpha = 1 - progress;
+    ctx.globalAlpha = alpha;
     
     // Rotate based on direction
     let rotation = 0;
@@ -434,24 +435,27 @@ function drawSlashCrescent(ctx, x, y, dirX, dirY, progress) {
     else if (dirY > 0) rotation = Math.PI / 2;
     
     ctx.rotate(rotation);
-    ctx.scale(scale, scale);
-    ctx.globalAlpha = alpha;
     
-    // Crescent moon slash (doubled size)
+    // Strider-style slash - elongated arc swoosh
     ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 6;
+    ctx.lineWidth = 8;
+    ctx.lineCap = 'round';
     ctx.shadowColor = '#fff';
-    ctx.shadowBlur = 15;
+    ctx.shadowBlur = 12;
     
+    // Main swoosh arc
     ctx.beginPath();
-    ctx.arc(0, 0, 35, -Math.PI * 0.7, Math.PI * 0.3, false);
+    ctx.moveTo(-15, -30);
+    ctx.quadraticCurveTo(40, 0, -15, 30);
     ctx.stroke();
     
-    // Inner bright line
+    // Inner highlight
     ctx.strokeStyle = '#aef';
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 4;
+    ctx.shadowBlur = 6;
     ctx.beginPath();
-    ctx.arc(0, 0, 32, -Math.PI * 0.6, Math.PI * 0.2, false);
+    ctx.moveTo(-10, -25);
+    ctx.quadraticCurveTo(35, 0, -10, 25);
     ctx.stroke();
     
     ctx.restore();
@@ -469,6 +473,11 @@ window.addEventListener('keydown', e => {
     keys[e.code] = true;
     // Initialize audio on first keypress (browser autoplay policy)
     if (!AUDIO.initialized) initAudio();
+    // Toggle debug mode with D
+    if (e.code === 'KeyD' && !e.repeat) {
+        state.debugMode = !state.debugMode;
+        console.log('Debug mode:', state.debugMode);
+    }
 });
 window.addEventListener('keyup', e => keys[e.code] = false);
 
@@ -494,6 +503,7 @@ const state = {
     messageTimer: 0,
     hitStopTimer: 0, // Characters freeze but particles continue
     isClashHitStop: false, // Whether hit stop is from clash (vs death)
+    debugMode: false, // Show collision boxes
 };
 
 // =============================================================================
@@ -1157,13 +1167,7 @@ class Player {
             ctx.fillRect(this.x, this.y, this.w, this.h);
         }
         
-        // Draw crescent slash effect when slashing
-        if (this.slashing) {
-            const slashProgress = 1 - (this.slashTimer / CONFIG.SWORD_DURATION);
-            const slashX = this.x + this.w/2 + this.slashDir.x * 40;
-            const slashY = this.y + this.h/2 + this.slashDir.y * 40;
-            drawSlashCrescent(ctx, slashX, slashY, this.slashDir.x || this.facing, this.slashDir.y, slashProgress);
-        }
+        // Slash effect is drawn in drawSlashEffects() - removed from here to avoid double render
         
         ctx.restore();
     }
@@ -1359,8 +1363,51 @@ function updateSlashEffects() {
 function drawSlashEffects(ctx) {
     for (const s of state.slashEffects) {
         const progress = 1 - (s.timer / CONFIG.SWORD_DURATION);
-        drawSlashCrescent(ctx, s.x, s.y, s.dirX || s.dir, s.dirY || 0, progress);
+        drawSlashSwoosh(ctx, s.x, s.y, s.dirX || s.dir, s.dirY || 0, progress);
     }
+}
+
+// Debug mode - draw collision boxes
+function drawDebug(ctx) {
+    if (!state.debugMode) return;
+    
+    ctx.save();
+    ctx.lineWidth = 2;
+    
+    // Platform collision boxes (green)
+    ctx.strokeStyle = '#0f0';
+    for (const p of state.platforms) {
+        ctx.strokeRect(p.x, p.y, p.w, p.h);
+    }
+    
+    // Player collision boxes (cyan for player, magenta for AI)
+    for (const p of state.players) {
+        if (!p.alive) continue;
+        ctx.strokeStyle = p.isAI ? '#f0f' : '#0ff';
+        ctx.strokeRect(p.x, p.y, p.w, p.h);
+        
+        // Draw slash hitbox if slashing (yellow)
+        if (p.slashing) {
+            ctx.strokeStyle = '#ff0';
+            ctx.fillStyle = 'rgba(255, 255, 0, 0.3)';
+            const slashX = p.x + p.w/2 + p.slashDir.x * 12;
+            const slashY = p.y + p.h/2 + p.slashDir.y * 12;
+            ctx.beginPath();
+            ctx.arc(slashX, slashY, CONFIG.SWORD_RANGE, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+        }
+    }
+    
+    // Slash effects (orange outline)
+    ctx.strokeStyle = '#f80';
+    for (const s of state.slashEffects) {
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, CONFIG.SWORD_RANGE, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+    
+    ctx.restore();
 }
 
 // =============================================================================
@@ -1579,6 +1626,9 @@ function draw() {
     
     // Draw players
     for (const p of state.players) p.draw(ctx);
+    
+    // Debug overlay
+    drawDebug(ctx);
     
     ctx.restore();
 }
