@@ -1071,8 +1071,10 @@ class Player {
     }
     
     handleInput() {
-        // Horizontal movement with momentum (blocked during movement lock)
-        if (this.movementLockTimer <= 0) {
+        // Horizontal movement with momentum (blocked during movement lock or mid-dash)
+        // Allow input in last 2 frames of dash for responsive exit
+        const dashLocked = this.dashing && this.dashTimer > 2;
+        if (this.movementLockTimer <= 0 && !dashLocked) {
             const accel = this.grounded ? CONFIG.PLAYER_ACCEL : CONFIG.PLAYER_AIR_ACCEL;
             const decel = this.grounded ? CONFIG.PLAYER_DECEL : CONFIG.PLAYER_AIR_DECEL;
             
