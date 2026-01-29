@@ -28,8 +28,8 @@ const CONFIG = {
     PLAYER_FAST_FALL: 16,
     
     // Combat (doubled for new scale)
-    SWORD_RANGE: 48,
-    SWORD_ARC: Math.PI * 0.6,
+    SLASH_WIDTH: 60,  // Slash hitbox width (longer dimension)
+    SLASH_HEIGHT: 24, // Slash hitbox height (shorter dimension)
     SWORD_DURATION: 8,
     SWORD_COOLDOWN: 15,
     SURFACE_DEFLECT_SPEED: 16, // Knockback from slashing surfaces
@@ -418,44 +418,59 @@ function drawOni(ctx, x, y, w, h, facing, frame, stunned) {
     ctx.restore();
 }
 
-// Draw Strider-like slash swoosh - single frame
-function drawSlashSwoosh(ctx, x, y, dirX, dirY, progress) {
+// Draw rectangular slash effect matching hitbox
+function drawSlashRect(ctx, hitbox, dirX, dirY, progress) {
     ctx.save();
-    ctx.translate(x, y);
     
     // Fade out over duration
-    const alpha = 1 - progress;
+    const alpha = 1 - progress * 0.8;
     ctx.globalAlpha = alpha;
     
-    // Rotate based on direction
-    let rotation = 0;
-    if (dirX > 0) rotation = 0;
-    else if (dirX < 0) rotation = Math.PI;
-    else if (dirY < 0) rotation = -Math.PI / 2;
-    else if (dirY > 0) rotation = Math.PI / 2;
+    const x = hitbox.x;
+    const y = hitbox.y;
+    const w = hitbox.w;
+    const h = hitbox.h;
     
-    ctx.rotate(rotation);
-    
-    // Strider-style slash - elongated arc swoosh
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 8;
-    ctx.lineCap = 'round';
+    // Glow effect
     ctx.shadowColor = '#fff';
-    ctx.shadowBlur = 12;
+    ctx.shadowBlur = 15;
     
-    // Main swoosh arc
-    ctx.beginPath();
-    ctx.moveTo(-15, -30);
-    ctx.quadraticCurveTo(40, 0, -15, 30);
-    ctx.stroke();
+    // Outer white slash
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.fillRect(x, y, w, h);
     
-    // Inner highlight
-    ctx.strokeStyle = '#aef';
-    ctx.lineWidth = 4;
-    ctx.shadowBlur = 6;
+    // Inner gradient - Strider-style fade
+    const gradient = ctx.createLinearGradient(
+        dirX !== 0 ? (dirX > 0 ? x : x + w) : x,
+        dirY !== 0 ? (dirY > 0 ? y : y + h) : y,
+        dirX !== 0 ? (dirX > 0 ? x + w : x) : x + w,
+        dirY !== 0 ? (dirY > 0 ? y + h : y) : y + h
+    );
+    gradient.addColorStop(0, 'rgba(170, 238, 255, 0.8)');
+    gradient.addColorStop(0.5, 'rgba(255, 255, 255, 1)');
+    gradient.addColorStop(1, 'rgba(170, 238, 255, 0.4)');
+    
+    ctx.fillStyle = gradient;
+    ctx.fillRect(x + 2, y + 2, w - 4, h - 4);
+    
+    // Sharp edge line on leading edge
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 3;
+    ctx.shadowBlur = 20;
     ctx.beginPath();
-    ctx.moveTo(-10, -25);
-    ctx.quadraticCurveTo(35, 0, -10, 25);
+    if (dirX > 0) {
+        ctx.moveTo(x + w, y);
+        ctx.lineTo(x + w, y + h);
+    } else if (dirX < 0) {
+        ctx.moveTo(x, y);
+        ctx.lineTo(x, y + h);
+    } else if (dirY < 0) {
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + w, y);
+    } else {
+        ctx.moveTo(x, y + h);
+        ctx.lineTo(x + w, y + h);
+    }
     ctx.stroke();
     
     ctx.restore();
@@ -878,13 +893,14 @@ class Player {
         this.slashTimer = CONFIG.SWORD_DURATION;
         this.slashCooldown = CONFIG.SWORD_COOLDOWN;
         
-        // Add slash effect with direction
+        // Get the hitbox for the visual effect
+        const hitbox = this.getSlashHitbox();
+        
+        // Add slash effect with hitbox info
         state.slashEffects.push({
-            x: this.x + this.w/2 + this.slashDir.x * 10,
-            y: this.y + this.h/2 + this.slashDir.y * 10,
+            hitbox: hitbox,
             dirX: this.slashDir.x,
             dirY: this.slashDir.y,
-            dir: this.slashDir.x !== 0 ? this.slashDir.x : this.facing, // For backwards compat
             timer: CONFIG.SWORD_DURATION,
             owner: this,
         });
@@ -896,13 +912,18 @@ class Player {
     
     checkSurfaceSlash() {
         // Check if slash hits a platform/wall and deflect player away
-        const slashX = this.x + this.w/2 + this.slashDir.x * CONFIG.SWORD_RANGE;
-        const slashY = this.y + this.h/2 + this.slashDir.y * CONFIG.SWORD_RANGE;
+        const hitbox = this.getSlashHitbox();
         
         for (const p of state.platforms) {
-            // Check if slash point is inside platform
-            if (slashX > p.x && slashX < p.x + p.w &&
-                slashY > p.y && slashY < p.y + p.h) {
+            // Rectangle vs rectangle collision
+            const hit = hitbox.x < p.x + p.w &&
+                        hitbox.x + hitbox.w > p.x &&
+                        hitbox.y < p.y + p.h &&
+                        hitbox.y + hitbox.h > p.y;
+            
+            if (hit) {
+                const slashX = hitbox.x + hitbox.w/2;
+                const slashY = hitbox.y + hitbox.h/2;
                 
                 // Deflect player away from the surface they slashed
                 if (this.slashDir.x !== 0) {
@@ -928,21 +949,46 @@ class Player {
         }
     }
     
+    getSlashHitbox() {
+        // Returns {x, y, w, h} for the rectangular slash hitbox
+        const sw = CONFIG.SLASH_WIDTH;
+        const sh = CONFIG.SLASH_HEIGHT;
+        
+        if (this.slashDir.x > 0) {
+            // Right slash - extends from right edge of character
+            return { x: this.x + this.w, y: this.y + this.h/2 - sh/2, w: sw, h: sh };
+        } else if (this.slashDir.x < 0) {
+            // Left slash - extends from left edge of character
+            return { x: this.x - sw, y: this.y + this.h/2 - sh/2, w: sw, h: sh };
+        } else if (this.slashDir.y < 0) {
+            // Up slash - extends from top, rotated (swap w/h)
+            return { x: this.x + this.w/2 - sh/2, y: this.y - sw, w: sh, h: sw };
+        } else {
+            // Down slash - extends from bottom, rotated (swap w/h)
+            return { x: this.x + this.w/2 - sh/2, y: this.y + this.h, w: sh, h: sw };
+        }
+    }
+    
     checkSlashHits() {
-        // Slash hitbox is in the direction of the slash
-        const cx = this.x + this.w/2 + this.slashDir.x * 12;
-        const cy = this.y + this.h/2 + this.slashDir.y * 12;
+        // Get rectangular slash hitbox
+        const hitbox = this.getSlashHitbox();
+        const cx = hitbox.x + hitbox.w/2;
+        const cy = hitbox.y + hitbox.h/2;
         
         // Hit other players
         for (const other of state.players) {
             if (other === this || !other.alive) continue;
             if (other.dashing) continue; // Dash i-frames
             
-            const otherCx = other.x + other.w/2;
-            const otherCy = other.y + other.h/2;
-            const dist = Math.sqrt((otherCx - cx) ** 2 + (otherCy - cy) ** 2);
+            // Rectangle vs rectangle collision
+            const hit = hitbox.x < other.x + other.w &&
+                        hitbox.x + hitbox.w > other.x &&
+                        hitbox.y < other.y + other.h &&
+                        hitbox.y + hitbox.h > other.y;
             
-            if (dist < CONFIG.SWORD_RANGE) {
+            if (hit) {
+                const otherCx = other.x + other.w/2;
+                const otherCy = other.y + other.h/2;
                 // Check for CLASH - both players slashing
                 if (other.slashing) {
                     // Clash! Store pending knockback for after hit stop
@@ -1363,7 +1409,7 @@ function updateSlashEffects() {
 function drawSlashEffects(ctx) {
     for (const s of state.slashEffects) {
         const progress = 1 - (s.timer / CONFIG.SWORD_DURATION);
-        drawSlashSwoosh(ctx, s.x, s.y, s.dirX || s.dir, s.dirY || 0, progress);
+        drawSlashRect(ctx, s.hitbox, s.dirX, s.dirY, progress);
     }
 }
 
@@ -1390,21 +1436,16 @@ function drawDebug(ctx) {
         if (p.slashing) {
             ctx.strokeStyle = '#ff0';
             ctx.fillStyle = 'rgba(255, 255, 0, 0.3)';
-            const slashX = p.x + p.w/2 + p.slashDir.x * 12;
-            const slashY = p.y + p.h/2 + p.slashDir.y * 12;
-            ctx.beginPath();
-            ctx.arc(slashX, slashY, CONFIG.SWORD_RANGE, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
+            const hitbox = p.getSlashHitbox();
+            ctx.fillRect(hitbox.x, hitbox.y, hitbox.w, hitbox.h);
+            ctx.strokeRect(hitbox.x, hitbox.y, hitbox.w, hitbox.h);
         }
     }
     
     // Slash effects (orange outline)
     ctx.strokeStyle = '#f80';
     for (const s of state.slashEffects) {
-        ctx.beginPath();
-        ctx.arc(s.x, s.y, CONFIG.SWORD_RANGE, 0, Math.PI * 2);
-        ctx.stroke();
+        ctx.strokeRect(s.hitbox.x, s.hitbox.y, s.hitbox.w, s.hitbox.h);
     }
     
     ctx.restore();
