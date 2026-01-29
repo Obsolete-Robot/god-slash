@@ -90,15 +90,34 @@ const COLORS = {
 
 const ASSETS = {
     loaded: false,
-    bgVideo: null,
+    bgVideos: [],
+    currentBgVideo: null,
     tiles: null,
     player: null,
     enemies: [],
 };
 
+// Background videos for each level
+const BG_VIDEOS = [
+    'assets/bg-video.mp4',   // Level 0: Dojo
+    'assets/bg-video-2.mp4', // Level 1: Tower
+    'assets/bg-video-3.mp4', // Level 2: Pit
+    'assets/bg-video.mp4',   // Level 3: Scattered (reuse Dojo for now)
+];
+
+function createVideoElement(src) {
+    const video = document.createElement('video');
+    video.src = src;
+    video.loop = true;
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = 'auto';
+    return video;
+}
+
 function loadAssets() {
     let loadCount = 0;
-    const totalAssets = 5; // video, tiles, player, 3 enemies
+    const totalAssets = 4 + BG_VIDEOS.length; // videos, tiles, player, 3 enemies
     
     function onLoad() {
         loadCount++;
@@ -108,18 +127,19 @@ function loadAssets() {
         }
     }
     
-    // Background video - autoplay, loop, muted
-    ASSETS.bgVideo = document.createElement('video');
-    ASSETS.bgVideo.src = 'assets/bg-video.mp4';
-    ASSETS.bgVideo.loop = true;
-    ASSETS.bgVideo.muted = true;
-    ASSETS.bgVideo.playsInline = true;
-    ASSETS.bgVideo.preload = 'auto';
-    ASSETS.bgVideo.oncanplaythrough = () => {
-        ASSETS.bgVideo.play().catch(() => {});
-        onLoad();
-    };
-    ASSETS.bgVideo.onerror = onLoad;
+    // Load all background videos
+    BG_VIDEOS.forEach((src, idx) => {
+        const video = createVideoElement(src);
+        video.oncanplaythrough = () => {
+            if (idx === 0) {
+                video.play().catch(() => {});
+                ASSETS.currentBgVideo = video;
+            }
+            onLoad();
+        };
+        video.onerror = onLoad;
+        ASSETS.bgVideos.push(video);
+    });
     
     ASSETS.tiles = new Image();
     ASSETS.tiles.onload = onLoad;
@@ -139,6 +159,21 @@ function loadAssets() {
         enemy.onerror = onLoad;
         enemy.src = `assets/enemy${i}.png`;
         ASSETS.enemies.push(enemy);
+    }
+}
+
+function switchBackgroundVideo(levelIndex) {
+    // Pause current video
+    if (ASSETS.currentBgVideo) {
+        ASSETS.currentBgVideo.pause();
+    }
+    
+    // Switch to new video
+    const newVideo = ASSETS.bgVideos[levelIndex % ASSETS.bgVideos.length];
+    if (newVideo) {
+        newVideo.currentTime = 0;
+        newVideo.play().catch(() => {});
+        ASSETS.currentBgVideo = newVideo;
     }
 }
 
@@ -525,6 +560,7 @@ const state = {
     slashEffects: [],
     platforms: [],
     currentLevel: '',
+    currentLevelIndex: 0,
     screenShake: 0,
     round: 1,
     paused: false,
@@ -606,9 +642,14 @@ function createStage(levelIndex) {
     const H = CONFIG.HEIGHT;
     
     // Use specified level or random
-    const level = LEVELS[levelIndex !== undefined ? levelIndex : Math.floor(Math.random() * LEVELS.length)];
+    const idx = levelIndex !== undefined ? levelIndex : Math.floor(Math.random() * LEVELS.length);
+    const level = LEVELS[idx];
     state.currentLevel = level.name;
+    state.currentLevelIndex = idx;
     state.platforms = level.platforms(W, H);
+    
+    // Switch background video
+    switchBackgroundVideo(idx);
 }
 
 // =============================================================================
@@ -1830,8 +1871,8 @@ function draw() {
     }
     
     // Draw background video
-    if (ASSETS.loaded && ASSETS.bgVideo && ASSETS.bgVideo.readyState >= 2) {
-        ctx.drawImage(ASSETS.bgVideo, 0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
+    if (ASSETS.loaded && ASSETS.currentBgVideo && ASSETS.currentBgVideo.readyState >= 2) {
+        ctx.drawImage(ASSETS.currentBgVideo, 0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
         // Darken slightly for contrast
         ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
         ctx.fillRect(0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
