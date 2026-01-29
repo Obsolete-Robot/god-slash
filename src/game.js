@@ -224,7 +224,7 @@ const AUDIO = {
     musicTracks: {},  // Music per level
     currentMusic: null,
     muted: false,
-    volume: 0.5,
+    volume: 0.05,
 };
 
 // Music tracks per level
