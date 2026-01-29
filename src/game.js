@@ -12,65 +12,65 @@ const CONFIG = {
     WIDTH: 768,
     HEIGHT: 432,
     
-    // Physics - Core
-    GRAVITY: 0.76,
-    MAX_FALL_SPEED: 12,
+    // Physics - Core (tuned to 80% feel)
+    GRAVITY: 0.61,
+    MAX_FALL_SPEED: 9.6,
     FRICTION: 0.85,
     
-    // Player - Movement
-    PLAYER_SPEED: 4.4,
-    PLAYER_JUMP: -16,
+    // Player - Movement (tuned to 80% feel)
+    PLAYER_SPEED: 3.52,
+    PLAYER_JUMP: -12.8,
     PLAYER_DOUBLE_JUMP_MULT: 0.85,
-    PLAYER_WALL_SLIDE: 3,
-    PLAYER_WALL_JUMP_X: 10,
-    PLAYER_WALL_JUMP_Y: -14,
-    PLAYER_DASH_SPEED: 24,
-    PLAYER_DASH_DURATION: 8,
-    PLAYER_DASH_COOLDOWN: 30,
-    PLAYER_FAST_FALL: 16,
+    PLAYER_WALL_SLIDE: 2.4,
+    PLAYER_WALL_JUMP_X: 8,
+    PLAYER_WALL_JUMP_Y: -11.2,
+    PLAYER_DASH_SPEED: 19.2,
+    PLAYER_DASH_DURATION: 10,
+    PLAYER_DASH_COOLDOWN: 38,
+    PLAYER_FAST_FALL: 12.8,
     
-    // Combat - Slash
+    // Combat - Slash (tuned to 80% feel)
     SLASH_WIDTH: 60,
     SLASH_HEIGHT: 24,
-    SWORD_DURATION: 8,
-    SWORD_COOLDOWN: 15,
+    SWORD_DURATION: 10,
+    SWORD_COOLDOWN: 19,
     
-    // Combat - Knockback
-    SURFACE_DEFLECT_SPEED: 16,
-    HIT_STUN_DURATION: 20,
-    HIT_STUN_KNOCKBACK: 16,
-    CLASH_KNOCKBACK: 20,
-    GROUND_SLASH_BOUNCE: -8,
-    WALL_SLASH_DELAY: 3,
+    // Combat - Knockback (tuned to 80% feel)
+    SURFACE_DEFLECT_SPEED: 12.8,
+    HIT_STUN_DURATION: 25,
+    HIT_STUN_KNOCKBACK: 12.8,
+    CLASH_KNOCKBACK: 16,
+    GROUND_SLASH_BOUNCE: -6.4,
+    WALL_SLASH_DELAY: 4,
     
-    // Combat - Hit Stop
-    HIT_STOP_DURATION: 18,
-    CLASH_HIT_STOP_DURATION: 9,
+    // Combat - Hit Stop (tuned to 80% feel)
+    HIT_STOP_DURATION: 23,
+    CLASH_HIT_STOP_DURATION: 11,
     
-    // Character Collision
-    BOP_BOUNCE_UP: -10,
-    BOP_PUSH_DOWN: 6,
-    PUSH_FORCE: 2,
+    // Character Collision (tuned to 80% feel)
+    BOP_BOUNCE_UP: -8,
+    BOP_PUSH_DOWN: 4.8,
+    PUSH_FORCE: 1.6,
     
-    // AI
-    AI_REACTION_TIME: 15,
+    // AI (tuned to 80% feel)
+    AI_REACTION_TIME: 19,
     AI_AGGRESSION: 0.5,
     AI_WANDER_CHANCE: 0.3,
-    AI_IDLE_TIME: 60,
+    AI_IDLE_TIME: 75,
     AI_WANDER_SPEED_MULT: 0.6,
     AI_WHIFF_CHANCE: 0.015,
     AI_JUMP_CHANCE: 0.03,
     
     // Game
     LIVES_PER_CHARACTER: 5,
-    RESPAWN_TIME: 60,
+    RESPAWN_TIME: 75,
     ENEMY_COUNT: 3,
     
     // Gun (DISABLED)
     GUN_ENABLED: false,
-    BULLET_SPEED: 10,
+    BULLET_SPEED: 8,
     BULLET_COUNT: 3,
-    GUN_COOLDOWN: 20,
+    GUN_COOLDOWN: 25,
 };
 
 // Tunable settings (subset of CONFIG that can be adjusted in debug panel)
