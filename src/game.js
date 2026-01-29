@@ -53,8 +53,8 @@ const CONFIG = {
     PUSH_FORCE: 1.6,
     
     // Air Slash
-    AIR_SLASH_FRICTION: 0.85, // Horizontal slowdown when slashing in air
-    AIR_SLASH_FALL_MULT: 0.5, // Gravity multiplier when slashing in air
+    AIR_SLASH_FRICTION: 0.15, // Horizontal slowdown when slashing in air
+    AIR_SLASH_FALL_MULT: 0.15, // Gravity multiplier when slashing in air
     
     // AI (tuned to 80% feel)
     AI_REACTION_TIME: 19,
@@ -953,11 +953,6 @@ class Player {
                 this.wallSliding = false;
                 this.facing = -this.wallDir;
             }
-        }
-        
-        // Fast fall
-        if ((keys['ArrowDown'] || keys['KeyS']) && !this.grounded) {
-            this.vy = Math.max(this.vy, CONFIG.PLAYER_FAST_FALL);
         }
         
         // Dash
