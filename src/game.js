@@ -90,7 +90,7 @@ const COLORS = {
 
 const ASSETS = {
     loaded: false,
-    background: null,
+    bgVideo: null,
     tiles: null,
     player: null,
     enemies: [],
@@ -98,7 +98,7 @@ const ASSETS = {
 
 function loadAssets() {
     let loadCount = 0;
-    const totalAssets = 6; // bg, tiles, player, 3 enemies
+    const totalAssets = 5; // video, tiles, player, 3 enemies
     
     function onLoad() {
         loadCount++;
@@ -108,10 +108,18 @@ function loadAssets() {
         }
     }
     
-    ASSETS.background = new Image();
-    ASSETS.background.onload = onLoad;
-    ASSETS.background.onerror = onLoad;
-    ASSETS.background.src = 'assets/bg-dojo.png';
+    // Background video - autoplay, loop, muted
+    ASSETS.bgVideo = document.createElement('video');
+    ASSETS.bgVideo.src = 'assets/bg-video.mp4';
+    ASSETS.bgVideo.loop = true;
+    ASSETS.bgVideo.muted = true;
+    ASSETS.bgVideo.playsInline = true;
+    ASSETS.bgVideo.preload = 'auto';
+    ASSETS.bgVideo.oncanplaythrough = () => {
+        ASSETS.bgVideo.play().catch(() => {});
+        onLoad();
+    };
+    ASSETS.bgVideo.onerror = onLoad;
     
     ASSETS.tiles = new Image();
     ASSETS.tiles.onload = onLoad;
@@ -1744,9 +1752,9 @@ function draw() {
         );
     }
     
-    // Draw background
-    if (ASSETS.loaded && ASSETS.background && ASSETS.background.complete) {
-        ctx.drawImage(ASSETS.background, 0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
+    // Draw background video
+    if (ASSETS.loaded && ASSETS.bgVideo && ASSETS.bgVideo.readyState >= 2) {
+        ctx.drawImage(ASSETS.bgVideo, 0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
         // Darken slightly for contrast
         ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
         ctx.fillRect(0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
