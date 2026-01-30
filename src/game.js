@@ -992,6 +992,91 @@ window.addEventListener('keydown', e => {
 window.addEventListener('keyup', e => keys[e.code] = false);
 
 // =============================================================================
+// GAMEPAD SUPPORT
+// =============================================================================
+
+const gamepad = {
+    connected: false,
+    // Current frame state
+    left: false,
+    right: false,
+    up: false,
+    down: false,
+    jump: false,
+    slash: false,
+    dash: false,
+    // Previous frame state (for just pressed detection)
+    prevJump: false,
+    prevSlash: false,
+    prevDash: false,
+    // Just pressed this frame
+    jumpPressed: false,
+    slashPressed: false,
+    dashPressed: false,
+    // Deadzone for analog sticks
+    deadzone: 0.3,
+};
+
+function updateGamepad() {
+    const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+    let gp = null;
+    
+    // Find first connected gamepad
+    for (const pad of gamepads) {
+        if (pad && pad.connected) {
+            gp = pad;
+            break;
+        }
+    }
+    
+    if (!gp) {
+        gamepad.connected = false;
+        return;
+    }
+    
+    gamepad.connected = true;
+    
+    // Initialize audio on first gamepad input (browser autoplay policy)
+    if (!AUDIO.initialized) {
+        const anyButton = gp.buttons.some(b => b.pressed);
+        const anyAxis = gp.axes.some(a => Math.abs(a) > gamepad.deadzone);
+        if (anyButton || anyAxis) initAudio();
+    }
+    
+    // Store previous state
+    gamepad.prevJump = gamepad.jump;
+    gamepad.prevSlash = gamepad.slash;
+    gamepad.prevDash = gamepad.dash;
+    
+    // Left stick X axis (axis 0) or D-pad
+    const stickX = gp.axes[0] || 0;
+    const dpadLeft = gp.buttons[14]?.pressed || false;  // D-pad left
+    const dpadRight = gp.buttons[15]?.pressed || false; // D-pad right
+    gamepad.left = stickX < -gamepad.deadzone || dpadLeft;
+    gamepad.right = stickX > gamepad.deadzone || dpadRight;
+    
+    // Left stick Y axis (axis 1) or D-pad
+    const stickY = gp.axes[1] || 0;
+    const dpadUp = gp.buttons[12]?.pressed || false;    // D-pad up
+    const dpadDown = gp.buttons[13]?.pressed || false;  // D-pad down
+    gamepad.up = stickY < -gamepad.deadzone || dpadUp;
+    gamepad.down = stickY > gamepad.deadzone || dpadDown;
+    
+    // Buttons (standard mapping):
+    // 0 = A/Cross, 1 = B/Circle, 2 = X/Square, 3 = Y/Triangle
+    // 4 = L1/LB, 5 = R1/RB, 6 = L2/LT, 7 = R2/RT
+    gamepad.jump = gp.buttons[0]?.pressed || gp.buttons[1]?.pressed || false;  // A or B
+    gamepad.slash = gp.buttons[2]?.pressed || gp.buttons[3]?.pressed || false; // X or Y
+    gamepad.dash = gp.buttons[4]?.pressed || gp.buttons[5]?.pressed ||         // L1/R1
+                   gp.buttons[6]?.pressed || gp.buttons[7]?.pressed || false;  // L2/R2
+    
+    // Detect just pressed (rising edge)
+    gamepad.jumpPressed = gamepad.jump && !gamepad.prevJump;
+    gamepad.slashPressed = gamepad.slash && !gamepad.prevSlash;
+    gamepad.dashPressed = gamepad.dash && !gamepad.prevDash;
+}
+
+// =============================================================================
 // DEBUG PANEL
 // =============================================================================
 
@@ -1444,12 +1529,16 @@ class Player {
             const accel = this.grounded ? CONFIG.PLAYER_ACCEL : CONFIG.PLAYER_AIR_ACCEL;
             const decel = this.grounded ? CONFIG.PLAYER_DECEL : CONFIG.PLAYER_AIR_DECEL;
             
-            if (keys['ArrowLeft'] || keys['KeyA']) {
+            // Check keyboard OR gamepad
+            const moveLeft = keys['ArrowLeft'] || keys['KeyA'] || gamepad.left;
+            const moveRight = keys['ArrowRight'] || keys['KeyD'] || gamepad.right;
+            
+            if (moveLeft && !moveRight) {
                 // Accelerate left
                 this.vx -= accel;
                 if (this.vx < -CONFIG.PLAYER_SPEED) this.vx = -CONFIG.PLAYER_SPEED;
                 this.facing = -1;
-            } else if (keys['ArrowRight'] || keys['KeyD']) {
+            } else if (moveRight && !moveLeft) {
                 // Accelerate right
                 this.vx += accel;
                 if (this.vx > CONFIG.PLAYER_SPEED) this.vx = CONFIG.PLAYER_SPEED;
@@ -1461,9 +1550,9 @@ class Player {
             }
         }
         
-        // Jump (X key)
-        if (keysJustPressed['KeyX'] || keysJustPressed['KeyK']) {
-            const holdingDown = keys['ArrowDown'] || keys['KeyS'];
+        // Jump (X key or gamepad A/B)
+        if (keysJustPressed['KeyX'] || keysJustPressed['KeyK'] || gamepad.jumpPressed) {
+            const holdingDown = keys['ArrowDown'] || keys['KeyS'] || gamepad.down;
             
             if (this.grounded && holdingDown) {
                 // Drop through platform
@@ -1482,18 +1571,18 @@ class Player {
             }
         }
         
-        // Dash
-        if ((keysJustPressed['ShiftLeft'] || keysJustPressed['ShiftRight']) && this.dashCooldown <= 0) {
+        // Dash (Shift or gamepad triggers/bumpers)
+        if ((keysJustPressed['ShiftLeft'] || keysJustPressed['ShiftRight'] || gamepad.dashPressed) && this.dashCooldown <= 0) {
             this.dash();
         }
         
-        // Sword slash (Z key) - 4 directional based on arrow keys (not while dashing)
-        if ((keysJustPressed['KeyZ'] || keysJustPressed['KeyJ']) && this.slashCooldown <= 0 && !this.dashing) {
-            // Determine slash direction from arrow keys
-            const up = keys['ArrowUp'] || keys['KeyW'];
-            const down = keys['ArrowDown'] || keys['KeyS'];
-            const left = keys['ArrowLeft'] || keys['KeyA'];
-            const right = keys['ArrowRight'] || keys['KeyD'];
+        // Sword slash (Z key or gamepad X/Y) - 4 directional based on arrow keys (not while dashing)
+        if ((keysJustPressed['KeyZ'] || keysJustPressed['KeyJ'] || gamepad.slashPressed) && this.slashCooldown <= 0 && !this.dashing) {
+            // Determine slash direction from arrow keys or gamepad
+            const up = keys['ArrowUp'] || keys['KeyW'] || gamepad.up;
+            const down = keys['ArrowDown'] || keys['KeyS'] || gamepad.down;
+            const left = keys['ArrowLeft'] || keys['KeyA'] || gamepad.left;
+            const right = keys['ArrowRight'] || keys['KeyD'] || gamepad.right;
             
             if (up && !down) {
                 this.slashDir = { x: 0, y: -1 };
@@ -3135,8 +3224,8 @@ function updateTitleScreen() {
         return;
     }
     
-    // Check for X key to start
-    if (keysJustPressed['KeyX'] || keysJustPressed['KeyK']) {
+    // Check for X key or gamepad to start
+    if (keysJustPressed['KeyX'] || keysJustPressed['KeyK'] || gamepad.jumpPressed || gamepad.slashPressed) {
         state.titleTransition = true;
         state.titleTransitionTimer = 0;
         playConfirmSound();
@@ -3564,8 +3653,8 @@ function updateOutro() {
     const d = state.outroData;
     const type = state.outroType;
     
-    // Handle X key press
-    if (d.promptVisible && (keysJustPressed['KeyX'] || keysJustPressed['KeyK'])) {
+    // Handle X key or gamepad press
+    if (d.promptVisible && (keysJustPressed['KeyX'] || keysJustPressed['KeyK'] || gamepad.jumpPressed || gamepad.slashPressed)) {
         playConfirmSound();
         state.outroActive = false;
         state.outroPhase = 'none';
@@ -4101,6 +4190,9 @@ function init() {
 }
 
 function update() {
+    // Poll gamepad every frame
+    updateGamepad();
+    
     // Title screen
     if (state.titleScreen) {
         updateTitleScreen();
