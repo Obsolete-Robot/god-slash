@@ -3622,8 +3622,11 @@ function update() {
     updateBloodBalls();
     updateDashEchoes();
     
-    // Screen shake decay
-    if (state.screenShake > 0) state.screenShake *= 0.9;
+    // Screen shake decay (fast decay, hard cutoff for clean stop)
+    if (state.screenShake > 0) {
+        state.screenShake *= 0.85;
+        if (state.screenShake < 0.3) state.screenShake = 0;
+    }
     
     clearJustPressed();
 }
