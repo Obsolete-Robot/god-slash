@@ -2982,6 +2982,31 @@ function updateIntro() {
     }
 }
 
+// Helper function to draw text with dark fill and thick white beveled outline
+function drawBeveledText(ctx, text, x, y, size, fillColor, strokeColor) {
+    ctx.save();
+    ctx.font = `bold ${size}px "Press Start 2P", monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    // Thick white outline (draw multiple times for thickness)
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = Math.max(4, size / 10);
+    ctx.lineJoin = 'round';
+    ctx.miterLimit = 2;
+    ctx.strokeText(text, x, y);
+    
+    // Dark fill
+    ctx.fillStyle = fillColor;
+    ctx.fillText(text, x, y);
+    
+    // Subtle inner highlight for bevel effect
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+    ctx.fillText(text, x, y - 1);
+    
+    ctx.restore();
+}
+
 function drawIntro(ctx) {
     if (!state.introActive) return;
     
@@ -2999,61 +3024,30 @@ function drawIntro(ctx) {
     
     switch (state.introPhase) {
         case 'round':
-            // ROUND X sliding in
-            ctx.font = 'bold 64px "Press Start 2P", monospace';
-            ctx.fillStyle = '#fff';
-            ctx.shadowColor = '#000';
-            ctx.shadowBlur = 10;
-            ctx.shadowOffsetX = 4;
-            ctx.shadowOffsetY = 4;
-            ctx.fillText(`ROUND ${state.round}`, d.roundSlideX, centerY - 30);
+            // ROUND X sliding in - dark blue with white bevel
+            drawBeveledText(ctx, `ROUND ${state.round}`, d.roundSlideX, centerY - 30, 64, '#1e3a5f', '#fff');
             break;
             
         case 'ready':
             // ROUND X (static now)
-            ctx.font = 'bold 64px "Press Start 2P", monospace';
-            ctx.fillStyle = '#fff';
-            ctx.shadowColor = '#000';
-            ctx.shadowBlur = 10;
-            ctx.shadowOffsetX = 4;
-            ctx.shadowOffsetY = 4;
-            ctx.fillText(`ROUND ${state.round}`, centerX, centerY - 30);
+            drawBeveledText(ctx, `ROUND ${state.round}`, centerX, centerY - 30, 64, '#1e3a5f', '#fff');
             
-            // READY typing out
+            // READY typing out - gold with white bevel
             const readyText = 'READY'.substring(0, d.readyLetters);
-            ctx.font = 'bold 36px "Press Start 2P", monospace';
-            ctx.fillStyle = '#fbbf24';
-            ctx.fillText(readyText, centerX, centerY + 40);
+            drawBeveledText(ctx, readyText, centerX, centerY + 40, 36, '#b45309', '#fff');
             break;
             
         case 'countdown':
-            // Big countdown number
+            // Big countdown number - dark with white bevel
             const countdownScale = 1 + Math.sin((state.introTimer % INTRO_TIMING.COUNTDOWN_DURATION) / INTRO_TIMING.COUNTDOWN_DURATION * Math.PI) * 0.1;
-            ctx.font = `bold ${Math.floor(120 * countdownScale)}px "Press Start 2P", monospace`;
-            ctx.fillStyle = d.countdownNum === 1 ? '#f44' : '#fff';
-            ctx.shadowColor = '#000';
-            ctx.shadowBlur = 15;
-            ctx.shadowOffsetX = 5;
-            ctx.shadowOffsetY = 5;
-            ctx.fillText(d.countdownNum.toString(), centerX, centerY);
+            const countdownColor = d.countdownNum === 1 ? '#7f1d1d' : '#1e3a5f';
+            drawBeveledText(ctx, d.countdownNum.toString(), centerX, centerY, Math.floor(120 * countdownScale), countdownColor, '#fff');
             break;
             
         case 'fight':
-            // FIGHT! pop-in
+            // FIGHT! pop-in - dark red with white bevel
             const scale = d.fightScale;
-            ctx.font = `bold ${Math.floor(80 * scale)}px "Press Start 2P", monospace`;
-            
-            // Glow effect
-            ctx.shadowColor = '#f44';
-            ctx.shadowBlur = 30;
-            ctx.fillStyle = '#f44';
-            ctx.fillText('FIGHT!', centerX, centerY);
-            
-            // White core
-            ctx.shadowBlur = 0;
-            ctx.fillStyle = '#fff';
-            ctx.font = `bold ${Math.floor(76 * scale)}px "Press Start 2P", monospace`;
-            ctx.fillText('FIGHT!', centerX, centerY);
+            drawBeveledText(ctx, 'FIGHT!', centerX, centerY, Math.floor(80 * scale), '#7f1d1d', '#fff');
             break;
     }
     
@@ -3292,14 +3286,8 @@ function drawGameOverOutro(ctx, centerX, centerY) {
     const message = OUTRO_MESSAGES.gameover;
     const prompt = OUTRO_PROMPTS.gameover;
     
-    // Draw GAME OVER letters
-    ctx.font = 'bold 56px "Press Start 2P", monospace';
-    ctx.shadowColor = '#000';
-    ctx.shadowBlur = 10;
-    ctx.shadowOffsetX = 4;
-    ctx.shadowOffsetY = 4;
-    
-    const letterWidth = 45;
+    // Draw GAME OVER letters with beveled style
+    const letterWidth = 50;
     const startX = centerX - (title.length * letterWidth) / 2 + letterWidth / 2;
     
     for (let i = 0; i < d.lettersSlammed; i++) {
@@ -3314,31 +3302,23 @@ function drawGameOverOutro(ctx, centerX, centerY) {
         ctx.save();
         ctx.translate(x, y);
         ctx.scale(scale, scale);
-        ctx.fillStyle = '#c00';
-        ctx.fillText(char, 0, 0);
+        // Dark red fill with white bevel
+        drawBeveledText(ctx, char, 0, 0, 56, '#7f1d1d', '#fff');
         ctx.restore();
     }
     
-    // Draw message
+    // Draw message with beveled style
     if (state.outroPhase === 'message' || state.outroPhase === 'prompt') {
         const visibleMessage = message.substring(0, d.messageLetters);
-        ctx.font = '18px "Press Start 2P", monospace';
-        ctx.fillStyle = '#888';
-        ctx.shadowBlur = 0;
-        ctx.fillText(visibleMessage, centerX, centerY + 20);
+        drawBeveledText(ctx, visibleMessage, centerX, centerY + 20, 16, '#4a4a4a', '#999');
     }
     
-    // Draw prompt
+    // Draw prompt with beveled style
     if (d.promptVisible) {
         const blink = Math.floor(d.promptBlink / 20) % 2 === 0;
         if (blink) {
-            ctx.font = '24px "Press Start 2P", monospace';
-            ctx.fillStyle = '#fff';
-            ctx.fillText(prompt, centerX, centerY + 80);
-            
-            ctx.font = '14px "Press Start 2P", monospace';
-            ctx.fillStyle = '#fbbf24';
-            ctx.fillText('[ Press X ]', centerX, centerY + 115);
+            drawBeveledText(ctx, prompt, centerX, centerY + 80, 24, '#1e3a5f', '#fff');
+            drawBeveledText(ctx, '[ Press X ]', centerX, centerY + 115, 14, '#92400e', '#fbbf24');
         }
     }
 }
@@ -3348,7 +3328,7 @@ function drawVictoryOutro(ctx, centerX, centerY) {
     const message = OUTRO_MESSAGES.victory;
     const prompt = OUTRO_PROMPTS.victory;
     
-    // Draw echo rings
+    // Draw echo rings with gold outline
     for (let i = 0; i < d.echoScales.length; i++) {
         const scale = d.echoScales[i];
         const alpha = Math.max(0, 1 - (scale - 1) / 2);
@@ -3356,51 +3336,31 @@ function drawVictoryOutro(ctx, centerX, centerY) {
         ctx.save();
         ctx.globalAlpha = alpha * 0.5;
         ctx.font = `bold ${Math.floor(64 * scale)}px "Press Start 2P", monospace`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
         ctx.strokeStyle = '#fbbf24';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 3;
         ctx.strokeText('VICTORY', centerX, centerY - 40);
         ctx.restore();
     }
     
-    // Draw main VICTORY text
+    // Draw main VICTORY text with dark gold fill and white bevel
     if (d.victoryScale > 0) {
-        ctx.save();
-        ctx.font = `bold ${Math.floor(64 * d.victoryScale)}px "Press Start 2P", monospace`;
-        ctx.shadowColor = '#fbbf24';
-        ctx.shadowBlur = 20;
-        ctx.fillStyle = '#fbbf24';
-        ctx.fillText('VICTORY', centerX, centerY - 40);
-        
-        // White core
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = '#fff';
-        ctx.font = `bold ${Math.floor(60 * d.victoryScale)}px "Press Start 2P", monospace`;
-        ctx.fillText('VICTORY', centerX, centerY - 40);
-        ctx.restore();
+        drawBeveledText(ctx, 'VICTORY', centerX, centerY - 40, Math.floor(64 * d.victoryScale), '#92400e', '#fbbf24');
     }
     
-    // Draw message
+    // Draw message with beveled style
     if (state.outroPhase === 'message' || state.outroPhase === 'prompt') {
         const visibleMessage = message.substring(0, d.messageLetters);
-        ctx.font = '16px "Press Start 2P", monospace';
-        ctx.fillStyle = '#fff';
-        ctx.shadowColor = '#000';
-        ctx.shadowBlur = 5;
-        ctx.fillText(visibleMessage, centerX, centerY + 30);
+        drawBeveledText(ctx, visibleMessage, centerX, centerY + 30, 16, '#4a4a4a', '#ddd');
     }
     
-    // Draw prompt
+    // Draw prompt with beveled style
     if (d.promptVisible) {
         const blink = Math.floor(d.promptBlink / 20) % 2 === 0;
         if (blink) {
-            ctx.font = '24px "Press Start 2P", monospace';
-            ctx.fillStyle = '#fff';
-            ctx.shadowBlur = 0;
-            ctx.fillText(prompt, centerX, centerY + 90);
-            
-            ctx.font = '14px "Press Start 2P", monospace';
-            ctx.fillStyle = '#fbbf24';
-            ctx.fillText('[ Press X ]', centerX, centerY + 125);
+            drawBeveledText(ctx, prompt, centerX, centerY + 90, 24, '#1e3a5f', '#fff');
+            drawBeveledText(ctx, '[ Press X ]', centerX, centerY + 125, 14, '#92400e', '#fbbf24');
         }
     }
 }
@@ -3489,8 +3449,11 @@ function checkGameOver() {
 // Start final hit sequence - spawns extra blood and lets effects resolve before outro
 function startFinalHit(type) {
     state.finalHitActive = true;
-    state.finalHitTimer = 120; // ~2 seconds to let effects resolve
+    state.finalHitTimer = 150; // ~2.5 seconds to let effects resolve
     state.finalHitType = type;
+    
+    // Slow motion for dramatic effect
+    state.timeScale = 0.3;
     
     // Spawn extra blood balls at the death location
     // Find the player/enemy that just died
@@ -3498,13 +3461,34 @@ function startFinalHit(type) {
         if (!p.alive) {
             const x = p.x + p.w / 2;
             const y = p.y + p.h / 2;
-            // Spawn 4x blood balls in all directions
-            for (let i = 0; i < 4; i++) {
-                spawnBloodBalls(x, y, Math.cos(i * Math.PI / 2), Math.sin(i * Math.PI / 2));
+            
+            // Spawn blood balls in 8 directions (including diagonals and up)
+            const angles = [0, Math.PI/4, Math.PI/2, 3*Math.PI/4, Math.PI, -3*Math.PI/4, -Math.PI/2, -Math.PI/4];
+            for (const angle of angles) {
+                spawnBloodBalls(x, y, Math.cos(angle), Math.sin(angle));
             }
+            
+            // Spawn special large blood ball that pops up
+            spawnLargeBloodBall(x, y);
+            
             break;
         }
     }
+}
+
+// Special large blood ball for final hit
+function spawnLargeBloodBall(x, y) {
+    state.bloodBalls.push({
+        x: x,
+        y: y,
+        vx: (Math.random() - 0.5) * 4,
+        vy: -12 - Math.random() * 4, // Strong upward pop
+        size: 18 + Math.random() * 8, // Much larger
+        life: 180,
+        dripTimer: 0,
+        dripInterval: 2, // Drip more frequently
+        isLarge: true,
+    });
 }
 
 function resetMatch() {
@@ -3513,6 +3497,7 @@ function resetMatch() {
     state.finalHitActive = false;
     state.finalHitTimer = 0;
     state.screenShake = 0;
+    state.timeScale = 1.0;
     
     // Select random level
     createStage();
@@ -3603,6 +3588,11 @@ function update() {
     if (state.finalHitActive) {
         state.finalHitTimer--;
         
+        // Gradually restore time scale
+        if (state.finalHitTimer < 60) {
+            state.timeScale = Math.min(1.0, state.timeScale + 0.02);
+        }
+        
         // Update effects so they can resolve
         updateParticles();
         updateBloodBalls();
@@ -3617,6 +3607,7 @@ function update() {
         // When timer expires, start the outro
         if (state.finalHitTimer <= 0) {
             state.finalHitActive = false;
+            state.timeScale = 1.0; // Ensure time scale is restored
             startOutro(state.finalHitType);
         }
         
