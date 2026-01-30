@@ -1086,6 +1086,11 @@ const state = {
     // Game over state (prevents multiple reset triggers)
     gameOverPending: false,
     
+    // Final hit state (delay before outro to let effects resolve)
+    finalHitActive: false,
+    finalHitTimer: 0,
+    finalHitType: 'none', // 'gameover' or 'victory'
+    
     // Match outro state (game over / victory)
     outroActive: false,
     outroType: 'none', // 'gameover', 'victory', 'none'
@@ -3463,13 +3468,13 @@ function hideMessage() {
 
 function checkGameOver() {
     // Prevent multiple triggers
-    if (state.gameOverPending || state.outroActive) return;
+    if (state.gameOverPending || state.outroActive || state.finalHitActive) return;
     
     // Check if player is out of lives
     const player = state.players[0];
     if (player.lives <= 0) {
         state.gameOverPending = true;
-        startOutro('gameover');
+        startFinalHit('gameover');
         return;
     }
     
@@ -3477,13 +3482,37 @@ function checkGameOver() {
     const aliveEnemies = state.players.slice(1).filter(p => p.lives > 0);
     if (aliveEnemies.length === 0) {
         state.gameOverPending = true;
-        startOutro('victory');
+        startFinalHit('victory');
+    }
+}
+
+// Start final hit sequence - spawns extra blood and lets effects resolve before outro
+function startFinalHit(type) {
+    state.finalHitActive = true;
+    state.finalHitTimer = 120; // ~2 seconds to let effects resolve
+    state.finalHitType = type;
+    
+    // Spawn extra blood balls at the death location
+    // Find the player/enemy that just died
+    for (const p of state.players) {
+        if (!p.alive) {
+            const x = p.x + p.w / 2;
+            const y = p.y + p.h / 2;
+            // Spawn 4x blood balls in all directions
+            for (let i = 0; i < 4; i++) {
+                spawnBloodBalls(x, y, Math.cos(i * Math.PI / 2), Math.sin(i * Math.PI / 2));
+            }
+            break;
+        }
     }
 }
 
 function resetMatch() {
-    // Clear game over flag
+    // Clear game over and final hit flags
     state.gameOverPending = false;
+    state.finalHitActive = false;
+    state.finalHitTimer = 0;
+    state.screenShake = 0;
     
     // Select random level
     createStage();
@@ -3561,8 +3590,38 @@ function update() {
     // Update match outro
     if (state.outroActive) {
         updateOutro();
+        // Still decay screen shake during outro
+        if (state.screenShake > 0) {
+            state.screenShake *= 0.85;
+            if (state.screenShake < 0.3) state.screenShake = 0;
+        }
         clearJustPressed();
         return; // Skip normal updates during outro
+    }
+    
+    // Final hit state - let effects resolve before outro
+    if (state.finalHitActive) {
+        state.finalHitTimer--;
+        
+        // Update effects so they can resolve
+        updateParticles();
+        updateBloodBalls();
+        updateDashEchoes();
+        
+        // Decay screen shake
+        if (state.screenShake > 0) {
+            state.screenShake *= 0.85;
+            if (state.screenShake < 0.3) state.screenShake = 0;
+        }
+        
+        // When timer expires, start the outro
+        if (state.finalHitTimer <= 0) {
+            state.finalHitActive = false;
+            startOutro(state.finalHitType);
+        }
+        
+        clearJustPressed();
+        return;
     }
     
     if (state.messageTimer > 0) {
