@@ -324,6 +324,23 @@ function switchMusicForLevel(levelIndex) {
     AUDIO.currentMusic = newTrack;
 }
 
+function playTitleMusic() {
+    // Use the Dojo track for title screen
+    const titleTrack = AUDIO.musicTracks[0];
+    if (!titleTrack) return;
+    
+    // Stop current music
+    if (AUDIO.currentMusic && AUDIO.currentMusic !== titleTrack) {
+        AUDIO.currentMusic.pause();
+        AUDIO.currentMusic.currentTime = 0;
+    }
+    
+    // Start title music
+    titleTrack.volume = AUDIO.muted ? 0 : AUDIO.volume;
+    titleTrack.play().catch(() => {});
+    AUDIO.currentMusic = titleTrack;
+}
+
 function setMusicVolume(vol) {
     AUDIO.volume = Math.max(0, Math.min(1, vol));
     if (AUDIO.currentMusic && !AUDIO.muted) {
@@ -2953,9 +2970,55 @@ function updateTitleScreen() {
         state.titleTransition = true;
         state.titleTransitionTimer = 0;
         playConfirmSound();
-        // Initialize audio on first interaction
-        if (!AUDIO.initialized) initAudio();
+        // Initialize audio on first interaction and start title music
+        if (!AUDIO.initialized) {
+            initAudio();
+        }
     }
+    
+    // Start title music if audio initialized but not playing
+    if (AUDIO.initialized && !AUDIO.currentMusic) {
+        playTitleMusic();
+    }
+}
+
+function returnToTitle() {
+    // Reset game state
+    state.titleScreen = true;
+    state.titleTransition = false;
+    state.titleTransitionTimer = 0;
+    state.titleFlashAlpha = 0;
+    state.round = 1;
+    state.gameOverPending = false;
+    state.outroActive = false;
+    state.introActive = false;
+    state.finalHitActive = false;
+    state.screenShake = 0;
+    state.timeScale = 1.0;
+    
+    // Clear effects
+    state.particles = [];
+    state.bloodBalls = [];
+    state.dashEchoes = [];
+    state.slashEffects = [];
+    state.spawnTelegraphs = [];
+    
+    // Reset players
+    for (const p of state.players) {
+        p.lives = CONFIG.LIVES_PER_CHARACTER;
+        p.alive = true;
+        p.x = p.spawnX;
+        p.y = p.spawnY;
+        p.vx = 0;
+        p.vy = 0;
+    }
+    
+    // Play title music
+    if (AUDIO.initialized) {
+        playTitleMusic();
+    }
+    
+    updateUI();
 }
 
 function drawTitleScreen(ctx) {
@@ -3331,13 +3394,20 @@ function updateOutro() {
     const d = state.outroData;
     const type = state.outroType;
     
-    // Handle X key press to restart
+    // Handle X key press
     if (d.promptVisible && (keysJustPressed['KeyX'] || keysJustPressed['KeyK'])) {
         playConfirmSound();
         state.outroActive = false;
         state.outroPhase = 'none';
-        state.round++;
-        resetMatch();
+        
+        if (type === 'gameover') {
+            // Game over - return to title screen
+            returnToTitle();
+        } else {
+            // Victory - continue to next round
+            state.round++;
+            resetMatch();
+        }
         return;
     }
     
