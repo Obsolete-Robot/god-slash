@@ -3149,7 +3149,7 @@ function updateGameOverOutro() {
                 d.lettersSlammed = letterIndex;
                 if (title[letterIndex - 1] !== ' ') {
                     playLetterSlamSound();
-                    state.screenShake = 8;
+                    state.screenShake = 3;
                 }
             }
             
@@ -3199,7 +3199,7 @@ function updateVictoryOutro() {
             d.victoryScale = elastic;
             
             if (state.outroTimer === 1) {
-                state.screenShake = 15;
+                state.screenShake = 5;
             }
             
             // Spawn echo rings
