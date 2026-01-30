@@ -1297,6 +1297,16 @@ class Player {
         this.invulnTimer = 0; // Invulnerability after respawn
         this.spawnEffectTimer = 0; // Visual spawn effect
         
+        // Dying state (ragdoll death animation)
+        this.dying = false;
+        this.dyingTimer = 0;
+        this.deathRotation = 0;        // Current rotation angle
+        this.deathRotationSpeed = 0;   // Spin speed (radians per frame)
+        this.deathKnockbackX = 0;      // Launch direction
+        this.deathKnockbackY = 0;
+        this.deathX = 0;               // Original death position (for blood effects)
+        this.deathY = 0;
+        
         // Movement lock (for wall slash delay)
         this.movementLockTimer = 0;
         
@@ -1332,6 +1342,44 @@ class Player {
             if (this.respawnTimer > 0) {
                 this.respawnTimer--;
                 if (this.respawnTimer <= 0) this.respawn();
+            }
+            return;
+        }
+        
+        // Dying state (ragdoll death animation)
+        if (this.dying) {
+            this.dyingTimer++;
+            
+            // Apply gravity (faster fall for dramatic effect)
+            this.vy += CONFIG.GRAVITY * 1.2;
+            if (this.vy > CONFIG.MAX_FALL_SPEED * 1.5) {
+                this.vy = CONFIG.MAX_FALL_SPEED * 1.5;
+            }
+            
+            // Apply velocity
+            this.x += this.vx;
+            this.y += this.vy;
+            
+            // Slow horizontal velocity slightly (air resistance)
+            this.vx *= 0.98;
+            
+            // Spin!
+            this.deathRotation += this.deathRotationSpeed;
+            
+            // Occasional blood drip while flying
+            if (this.dyingTimer % 8 === 0) {
+                spawnParticles(this.x + this.w/2, this.y + this.h/2, 2, COLORS.blood);
+            }
+            
+            // Check if off screen or max time (3 seconds)
+            const offScreen = this.y > CONFIG.HEIGHT + 100 || 
+                              this.y < -200 || 
+                              this.x < -100 || 
+                              this.x > CONFIG.WIDTH + 100;
+            const timedOut = this.dyingTimer > 180; // 3 seconds at 60fps
+            
+            if (offScreen || timedOut) {
+                this.finishDying();
             }
             return;
         }
@@ -1482,6 +1530,8 @@ class Player {
             if (other === this || !other.alive) continue;
             // Don't target invulnerable players
             if (other.invulnTimer > 0) continue;
+            // Skip dying players as primary targets (they're already out)
+            if (other.dying) continue;
             const d = Math.sqrt((other.x - this.x) ** 2 + (other.y - this.y) ** 2);
             if (d < minDist) {
                 minDist = d;
@@ -1836,6 +1886,26 @@ class Player {
             if (hit) {
                 const otherCx = other.x + other.w/2;
                 const otherCy = other.y + other.h/2;
+                
+                // JUGGLE - hit dying player, pop them up again!
+                if (other.dying) {
+                    // Juggle! Pop them in slash direction with extra spin
+                    const juggleForce = 10;
+                    const juggleUp = -12;
+                    other.vx = this.slashDir.x * juggleForce + this.facing * 3;
+                    other.vy = juggleUp + this.slashDir.y * 5;
+                    other.deathRotationSpeed *= -1.3; // Reverse and speed up spin
+                    other.dyingTimer = Math.max(0, other.dyingTimer - 30); // Extend airtime
+                    
+                    // Blood spray
+                    spawnBloodParticles(otherCx, otherCy, 15, this.facing);
+                    spawnParticles(otherCx, otherCy, 5, '#fff');
+                    
+                    state.screenShake = 6;
+                    playClashSound(); // Satisfying hit sound
+                    continue; // Don't process as normal hit
+                }
+                
                 // Check for CLASH - both players slashing
                 if (other.slashing) {
                     // Clash! Store pending knockback for after hit stop
@@ -2156,12 +2226,82 @@ class Player {
     }
     
     die() {
-        this.alive = false;
-        this.lives--;
-        this.respawnTimer = this.lives > 0 ? CONFIG.RESPAWN_TIME : -1; // Don't respawn if no lives
+        // Enter dying state (ragdoll) instead of immediately dying
+        this.dying = true;
+        this.dyingTimer = 0;
+        this.alive = true; // Stay "alive" for collision/juggling during ragdoll
+        
+        // Store original death position for blood effects (before ragdoll moves them)
+        this.deathX = this.x + this.w / 2;
+        this.deathY = this.y + this.h / 2;
+        
+        // Pop up and away from the kill direction
+        const launchSpeed = 12;
+        const launchUp = -14;
+        this.deathKnockbackX = this.pendingKnockbackX !== 0 ? Math.sign(this.pendingKnockbackX) * launchSpeed : (Math.random() > 0.5 ? 1 : -1) * launchSpeed;
+        this.deathKnockbackY = launchUp;
+        this.vx = this.deathKnockbackX;
+        this.vy = this.deathKnockbackY;
+        
+        // Random spin direction and speed
+        this.deathRotationSpeed = (Math.random() > 0.5 ? 1 : -1) * (0.3 + Math.random() * 0.4);
+        this.deathRotation = 0;
+        
         spawnParticles(this.x + this.w/2, this.y + this.h/2, 20, this.color);
         state.screenShake = 10;
         playDeathSound();
+        
+        // Check if this is a FINAL KILL - spawn big blood and start slowmo immediately!
+        const isFinalKill = this.checkIfFinalKill();
+        if (isFinalKill) {
+            // Spawn the big blood explosion NOW at hit location
+            const x = this.deathX;
+            const y = this.deathY;
+            
+            // Blood balls in 8 directions
+            const angles = [0, Math.PI/4, Math.PI/2, 3*Math.PI/4, Math.PI, -3*Math.PI/4, -Math.PI/2, -Math.PI/4];
+            for (const angle of angles) {
+                spawnBloodBalls(x, y, Math.cos(angle), Math.sin(angle));
+            }
+            
+            // Special large blood ball
+            spawnLargeBloodBall(x, y);
+            
+            state.screenShake = 15;
+            
+            // Start slowmo immediately!
+            state.timeScale = 0.3;
+            state.finalHitActive = true;
+            state.finalHitTimer = 150;
+            state.finalHitType = this.isAI ? 'victory' : 'gameover';
+            state.gameOverPending = true;
+        }
+    }
+    
+    // Check if this death will end the game (last life)
+    checkIfFinalKill() {
+        // This player is about to lose their last life
+        if (this.lives <= 1) {
+            // If it's the human player, it's game over
+            if (!this.isAI) return true;
+            
+            // If it's an enemy, check if all other enemies are also out
+            const otherEnemiesAlive = state.players.slice(1).filter(p => 
+                p !== this && p.lives > 0
+            );
+            if (otherEnemiesAlive.length === 0) return true;
+        }
+        return false;
+    }
+    
+    // Called when ragdoll death animation is complete (off screen or max time)
+    finishDying() {
+        this.dying = false;
+        this.alive = false;
+        this.lives--;
+        this.deathRotation = 0;
+        this.deathRotationSpeed = 0;
+        this.respawnTimer = this.lives > 0 ? CONFIG.RESPAWN_TIME : -1;
         
         // Create spawn telegraph at future respawn location
         if (this.lives > 0) {
@@ -2219,6 +2359,10 @@ class Player {
         this.dashing = false;
         this.slashing = false;
         this.stunned = false;
+        this.dying = false;
+        this.dyingTimer = 0;
+        this.deathRotation = 0;
+        this.deathRotationSpeed = 0;
         this.movementLockTimer = 0;
         this.invulnTimer = CONFIG.RESPAWN_INVULN;
         this.spawnEffectTimer = 30; // Spawn flash effect
@@ -2237,9 +2381,14 @@ class Player {
     }
     
     draw(ctx) {
-        if (!this.alive) return;
+        if (!this.alive && !this.dying) return;
         
         ctx.save();
+        
+        // Dying state - 50% transparent and spinning
+        if (this.dying) {
+            ctx.globalAlpha = 0.5;
+        }
         
         // Flash when dashing
         if (this.dashing && Math.floor(this.dashTimer / 2) % 2 === 0) {
@@ -2276,6 +2425,15 @@ class Player {
             
             ctx.save();
             
+            // Dying rotation - spin around center
+            if (this.dying) {
+                const centerX = this.x + this.w / 2;
+                const centerY = this.y + this.h / 2;
+                ctx.translate(centerX, centerY);
+                ctx.rotate(this.deathRotation);
+                ctx.translate(-centerX, -centerY);
+            }
+            
             // Flip horizontally if facing left
             if (this.facing === -1) {
                 ctx.translate(this.x + this.w / 2, 0);
@@ -2309,6 +2467,17 @@ class Player {
             ctx.restore();
         } else {
             // Fallback to colored rectangle
+            ctx.save();
+            
+            // Dying rotation for fallback
+            if (this.dying) {
+                const centerX = this.x + this.w / 2;
+                const centerY = this.y + this.h / 2;
+                ctx.translate(centerX, centerY);
+                ctx.rotate(this.deathRotation);
+                ctx.translate(-centerX, -centerY);
+            }
+            
             ctx.fillStyle = this.isAI ? COLORS.player2 : COLORS.player1;
             ctx.fillRect(this.x, this.y, this.w, this.h);
             
@@ -2323,6 +2492,7 @@ class Player {
                 ctx.strokeRect(this.x - 1, this.y - 1, this.w + 2, this.h + 2);
                 ctx.restore();
             }
+            ctx.restore();
         }
         
         // Slash effect is drawn in drawSlashEffects() - removed from here to avoid double render
@@ -3836,25 +4006,8 @@ function startFinalHit(type) {
     // Slow motion for dramatic effect
     state.timeScale = 0.3;
     
-    // Spawn extra blood balls at the death location
-    // Find the player/enemy that just died
-    for (const p of state.players) {
-        if (!p.alive) {
-            const x = p.x + p.w / 2;
-            const y = p.y + p.h / 2;
-            
-            // Spawn blood balls in 8 directions (including diagonals and up)
-            const angles = [0, Math.PI/4, Math.PI/2, 3*Math.PI/4, Math.PI, -3*Math.PI/4, -Math.PI/2, -Math.PI/4];
-            for (const angle of angles) {
-                spawnBloodBalls(x, y, Math.cos(angle), Math.sin(angle));
-            }
-            
-            // Spawn special large blood ball that pops up
-            spawnLargeBloodBall(x, y);
-            
-            break;
-        }
-    }
+    // Blood is now spawned immediately in die() when final kill is detected
+    // This function just handles the slowmo and timing before outro
 }
 
 // Special large blood ball for final hit
@@ -3980,6 +4133,9 @@ function update() {
         if (state.finalHitTimer < 60) {
             state.timeScale = Math.min(1.0, state.timeScale + 0.02);
         }
+        
+        // Update players so ragdoll can resolve!
+        for (const p of state.players) p.update();
         
         // Update effects so they can resolve
         updateParticles();
