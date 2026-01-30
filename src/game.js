@@ -2982,31 +2982,6 @@ function updateIntro() {
     }
 }
 
-// Helper function to draw text with dark fill and thick white beveled outline
-function drawBeveledText(ctx, text, x, y, size, fillColor, strokeColor) {
-    ctx.save();
-    ctx.font = `bold ${size}px "Press Start 2P", monospace`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    
-    // Thick white outline (draw multiple times for thickness)
-    ctx.strokeStyle = strokeColor;
-    ctx.lineWidth = Math.max(4, size / 10);
-    ctx.lineJoin = 'round';
-    ctx.miterLimit = 2;
-    ctx.strokeText(text, x, y);
-    
-    // Dark fill
-    ctx.fillStyle = fillColor;
-    ctx.fillText(text, x, y);
-    
-    // Subtle inner highlight for bevel effect
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
-    ctx.fillText(text, x, y - 1);
-    
-    ctx.restore();
-}
-
 function drawIntro(ctx) {
     if (!state.introActive) return;
     
@@ -3018,36 +2993,130 @@ function drawIntro(ctx) {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     
-    // Semi-transparent overlay
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+    // Semi-transparent overlay with vignette
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
     ctx.fillRect(0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
     
     switch (state.introPhase) {
         case 'round':
-            // ROUND X sliding in - dark blue with white bevel
-            drawBeveledText(ctx, `ROUND ${state.round}`, d.roundSlideX, centerY - 30, 64, '#1e3a5f', '#fff');
+            // ROUND X sliding in with motion blur effect
+            ctx.font = 'bold 64px "Press Start 2P", monospace';
+            
+            // Motion blur trail (multiple faded copies behind)
+            for (let i = 3; i > 0; i--) {
+                ctx.globalAlpha = 0.15;
+                ctx.fillStyle = '#4af';
+                ctx.fillText(`ROUND ${state.round}`, d.roundSlideX - i * 30, centerY - 30);
+            }
+            ctx.globalAlpha = 1;
+            
+            // Main text with glow
+            ctx.shadowColor = '#4af';
+            ctx.shadowBlur = 20;
+            ctx.fillStyle = '#fff';
+            ctx.fillText(`ROUND ${state.round}`, d.roundSlideX, centerY - 30);
+            
+            // Sharp overlay
+            ctx.shadowBlur = 0;
+            ctx.shadowColor = '#000';
+            ctx.shadowOffsetX = 3;
+            ctx.shadowOffsetY = 3;
+            ctx.fillText(`ROUND ${state.round}`, d.roundSlideX, centerY - 30);
             break;
             
         case 'ready':
-            // ROUND X (static now)
-            drawBeveledText(ctx, `ROUND ${state.round}`, centerX, centerY - 30, 64, '#1e3a5f', '#fff');
+            // ROUND X (static with subtle pulse)
+            const roundPulse = 1 + Math.sin(state.introTimer * 0.1) * 0.02;
+            ctx.font = `bold ${Math.floor(64 * roundPulse)}px "Press Start 2P", monospace`;
+            ctx.shadowColor = '#4af';
+            ctx.shadowBlur = 15;
+            ctx.fillStyle = '#fff';
+            ctx.fillText(`ROUND ${state.round}`, centerX, centerY - 30);
+            ctx.shadowBlur = 0;
+            ctx.shadowColor = '#000';
+            ctx.shadowOffsetX = 3;
+            ctx.shadowOffsetY = 3;
+            ctx.fillText(`ROUND ${state.round}`, centerX, centerY - 30);
             
-            // READY typing out - gold with white bevel
+            // READY typing out with golden glow
             const readyText = 'READY'.substring(0, d.readyLetters);
-            drawBeveledText(ctx, readyText, centerX, centerY + 40, 36, '#b45309', '#fff');
+            ctx.font = 'bold 40px "Press Start 2P", monospace';
+            
+            // Outer glow
+            ctx.shadowColor = '#fbbf24';
+            ctx.shadowBlur = 25;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+            ctx.fillStyle = '#fbbf24';
+            ctx.fillText(readyText, centerX, centerY + 45);
+            
+            // Inner bright
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = '#fff';
+            ctx.fillText(readyText, centerX, centerY + 45);
             break;
             
         case 'countdown':
-            // Big countdown number - dark with white bevel
-            const countdownScale = 1 + Math.sin((state.introTimer % INTRO_TIMING.COUNTDOWN_DURATION) / INTRO_TIMING.COUNTDOWN_DURATION * Math.PI) * 0.1;
-            const countdownColor = d.countdownNum === 1 ? '#7f1d1d' : '#1e3a5f';
-            drawBeveledText(ctx, d.countdownNum.toString(), centerX, centerY, Math.floor(120 * countdownScale), countdownColor, '#fff');
+            // Big countdown number with intense scaling and glow
+            const countdownProgress = (state.introTimer % INTRO_TIMING.COUNTDOWN_DURATION) / INTRO_TIMING.COUNTDOWN_DURATION;
+            const countdownScale = 1.3 - countdownProgress * 0.3 + Math.sin(countdownProgress * Math.PI) * 0.15;
+            const countdownAlpha = 1 - countdownProgress * 0.3;
+            
+            ctx.globalAlpha = countdownAlpha;
+            ctx.font = `bold ${Math.floor(140 * countdownScale)}px "Press Start 2P", monospace`;
+            
+            // Color based on number
+            const numColor = d.countdownNum === 1 ? '#f44' : (d.countdownNum === 2 ? '#fa0' : '#fff');
+            const glowColor = d.countdownNum === 1 ? '#f00' : (d.countdownNum === 2 ? '#f80' : '#4af');
+            
+            // Outer glow ring
+            ctx.shadowColor = glowColor;
+            ctx.shadowBlur = 40;
+            ctx.fillStyle = numColor;
+            ctx.fillText(d.countdownNum.toString(), centerX, centerY);
+            
+            // Sharp center
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = '#fff';
+            ctx.font = `bold ${Math.floor(130 * countdownScale)}px "Press Start 2P", monospace`;
+            ctx.fillText(d.countdownNum.toString(), centerX, centerY);
+            ctx.globalAlpha = 1;
             break;
             
         case 'fight':
-            // FIGHT! pop-in - dark red with white bevel
+            // FIGHT! epic pop-in with multiple layers
             const scale = d.fightScale;
-            drawBeveledText(ctx, 'FIGHT!', centerX, centerY, Math.floor(80 * scale), '#7f1d1d', '#fff');
+            const fightPulse = 1 + Math.sin(state.introTimer * 0.3) * 0.03;
+            const finalScale = scale * fightPulse;
+            
+            // Background burst lines (radial)
+            ctx.save();
+            ctx.translate(centerX, centerY);
+            for (let i = 0; i < 12; i++) {
+                ctx.rotate(Math.PI / 6);
+                ctx.fillStyle = `rgba(255, 68, 68, ${0.3 * scale})`;
+                ctx.fillRect(-3, -CONFIG.HEIGHT, 6, CONFIG.HEIGHT * scale);
+            }
+            ctx.restore();
+            
+            // Outer red glow
+            ctx.font = `bold ${Math.floor(85 * finalScale)}px "Press Start 2P", monospace`;
+            ctx.shadowColor = '#f00';
+            ctx.shadowBlur = 50 * scale;
+            ctx.fillStyle = '#f44';
+            ctx.fillText('FIGHT!', centerX, centerY);
+            
+            // Middle layer
+            ctx.shadowBlur = 20 * scale;
+            ctx.fillStyle = '#f88';
+            ctx.font = `bold ${Math.floor(82 * finalScale)}px "Press Start 2P", monospace`;
+            ctx.fillText('FIGHT!', centerX, centerY);
+            
+            // White hot center
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = '#fff';
+            ctx.font = `bold ${Math.floor(78 * finalScale)}px "Press Start 2P", monospace`;
+            ctx.fillText('FIGHT!', centerX, centerY);
             break;
     }
     
@@ -3286,39 +3355,77 @@ function drawGameOverOutro(ctx, centerX, centerY) {
     const message = OUTRO_MESSAGES.gameover;
     const prompt = OUTRO_PROMPTS.gameover;
     
-    // Draw GAME OVER letters with beveled style
-    const letterWidth = 50;
+    // Draw GAME OVER letters with impact effects
+    const letterWidth = 48;
     const startX = centerX - (title.length * letterWidth) / 2 + letterWidth / 2;
     
     for (let i = 0; i < d.lettersSlammed; i++) {
         const char = title[i];
         const x = startX + i * letterWidth;
         
-        // Letters slam from above
-        const slamProgress = Math.min(1, (state.outroTimer - i * OUTRO_TIMING.LETTER_SLAM_DELAY) / 8);
-        const y = centerY - 60 + (slamProgress < 1 ? (1 - slamProgress) * -100 : 0);
-        const scale = slamProgress < 1 ? 0.5 + slamProgress * 0.5 : 1;
+        // Letters slam from above with bounce
+        const timeSinceSlam = state.outroTimer - i * OUTRO_TIMING.LETTER_SLAM_DELAY;
+        const slamProgress = Math.min(1, timeSinceSlam / 8);
+        const bounce = slamProgress >= 1 ? Math.sin(Math.min(timeSinceSlam - 8, 20) * 0.3) * Math.max(0, 1 - (timeSinceSlam - 8) / 20) * 5 : 0;
+        const y = centerY - 60 + (slamProgress < 1 ? (1 - Math.pow(slamProgress, 0.5)) * -150 : bounce);
+        const scale = slamProgress < 1 ? 0.3 + slamProgress * 0.7 : 1;
+        const rotation = slamProgress < 1 ? (1 - slamProgress) * 0.2 * (i % 2 === 0 ? 1 : -1) : 0;
         
         ctx.save();
         ctx.translate(x, y);
+        ctx.rotate(rotation);
         ctx.scale(scale, scale);
-        // Dark red fill with white bevel
-        drawBeveledText(ctx, char, 0, 0, 56, '#7f1d1d', '#fff');
+        
+        // Red glow
+        ctx.font = 'bold 56px "Press Start 2P", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowColor = '#f00';
+        ctx.shadowBlur = 20;
+        ctx.fillStyle = '#c00';
+        ctx.fillText(char, 0, 0);
+        
+        // White core on impact
+        if (slamProgress >= 1) {
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = '#fff';
+            ctx.globalAlpha = Math.max(0, 1 - timeSinceSlam / 30);
+            ctx.fillText(char, 0, 0);
+            ctx.globalAlpha = 1;
+        }
+        
         ctx.restore();
     }
     
-    // Draw message with beveled style
+    // Draw message with typewriter glow
     if (state.outroPhase === 'message' || state.outroPhase === 'prompt') {
         const visibleMessage = message.substring(0, d.messageLetters);
-        drawBeveledText(ctx, visibleMessage, centerX, centerY + 20, 16, '#4a4a4a', '#999');
+        ctx.font = '16px "Press Start 2P", monospace';
+        ctx.textAlign = 'center';
+        ctx.shadowColor = '#666';
+        ctx.shadowBlur = 10;
+        ctx.fillStyle = '#aaa';
+        ctx.fillText(visibleMessage, centerX, centerY + 25);
     }
     
-    // Draw prompt with beveled style
+    // Draw prompt with pulsing glow
     if (d.promptVisible) {
         const blink = Math.floor(d.promptBlink / 20) % 2 === 0;
+        const pulse = 1 + Math.sin(d.promptBlink * 0.1) * 0.05;
+        
         if (blink) {
-            drawBeveledText(ctx, prompt, centerX, centerY + 80, 24, '#1e3a5f', '#fff');
-            drawBeveledText(ctx, '[ Press X ]', centerX, centerY + 115, 14, '#92400e', '#fbbf24');
+            ctx.font = `bold ${Math.floor(26 * pulse)}px "Press Start 2P", monospace`;
+            ctx.textAlign = 'center';
+            ctx.shadowColor = '#4af';
+            ctx.shadowBlur = 15;
+            ctx.fillStyle = '#fff';
+            ctx.fillText(prompt, centerX, centerY + 85);
+            
+            ctx.font = '14px "Press Start 2P", monospace';
+            ctx.shadowColor = '#fa0';
+            ctx.shadowBlur = 10;
+            ctx.fillStyle = '#fbbf24';
+            ctx.fillText('[ Press X ]', centerX, centerY + 118);
         }
     }
 }
@@ -3328,39 +3435,94 @@ function drawVictoryOutro(ctx, centerX, centerY) {
     const message = OUTRO_MESSAGES.victory;
     const prompt = OUTRO_PROMPTS.victory;
     
-    // Draw echo rings with gold outline
+    // Background starburst
+    if (d.victoryScale > 0.5) {
+        ctx.save();
+        ctx.translate(centerX, centerY - 40);
+        const burstAlpha = Math.min(1, (d.victoryScale - 0.5) * 2) * 0.3;
+        for (let i = 0; i < 16; i++) {
+            ctx.rotate(Math.PI / 8);
+            ctx.fillStyle = `rgba(251, 191, 36, ${burstAlpha})`;
+            ctx.fillRect(-2, -CONFIG.HEIGHT * 0.4, 4, CONFIG.HEIGHT * 0.4);
+        }
+        ctx.restore();
+    }
+    
+    // Draw echo rings with golden glow
     for (let i = 0; i < d.echoScales.length; i++) {
         const scale = d.echoScales[i];
-        const alpha = Math.max(0, 1 - (scale - 1) / 2);
+        const alpha = Math.max(0, 1 - (scale - 1) / 2.5);
         
         ctx.save();
-        ctx.globalAlpha = alpha * 0.5;
-        ctx.font = `bold ${Math.floor(64 * scale)}px "Press Start 2P", monospace`;
+        ctx.globalAlpha = alpha * 0.6;
+        ctx.font = `bold ${Math.floor(68 * scale)}px "Press Start 2P", monospace`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
+        ctx.shadowColor = '#fbbf24';
+        ctx.shadowBlur = 15;
         ctx.strokeStyle = '#fbbf24';
         ctx.lineWidth = 3;
         ctx.strokeText('VICTORY', centerX, centerY - 40);
         ctx.restore();
     }
     
-    // Draw main VICTORY text with dark gold fill and white bevel
+    // Draw main VICTORY text with layered glow
     if (d.victoryScale > 0) {
-        drawBeveledText(ctx, 'VICTORY', centerX, centerY - 40, Math.floor(64 * d.victoryScale), '#92400e', '#fbbf24');
+        const pulse = 1 + Math.sin(state.outroTimer * 0.15) * 0.03;
+        const finalScale = d.victoryScale * pulse;
+        
+        ctx.font = `bold ${Math.floor(68 * finalScale)}px "Press Start 2P", monospace`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        
+        // Outer golden glow
+        ctx.shadowColor = '#fbbf24';
+        ctx.shadowBlur = 40;
+        ctx.fillStyle = '#fbbf24';
+        ctx.fillText('VICTORY', centerX, centerY - 40);
+        
+        // Middle layer
+        ctx.shadowBlur = 15;
+        ctx.fillStyle = '#ffe066';
+        ctx.font = `bold ${Math.floor(66 * finalScale)}px "Press Start 2P", monospace`;
+        ctx.fillText('VICTORY', centerX, centerY - 40);
+        
+        // White hot center
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#fff';
+        ctx.font = `bold ${Math.floor(62 * finalScale)}px "Press Start 2P", monospace`;
+        ctx.fillText('VICTORY', centerX, centerY - 40);
     }
     
-    // Draw message with beveled style
+    // Draw message with glow
     if (state.outroPhase === 'message' || state.outroPhase === 'prompt') {
         const visibleMessage = message.substring(0, d.messageLetters);
-        drawBeveledText(ctx, visibleMessage, centerX, centerY + 30, 16, '#4a4a4a', '#ddd');
+        ctx.font = '16px "Press Start 2P", monospace';
+        ctx.textAlign = 'center';
+        ctx.shadowColor = '#fbbf24';
+        ctx.shadowBlur = 8;
+        ctx.fillStyle = '#fff';
+        ctx.fillText(visibleMessage, centerX, centerY + 35);
     }
     
-    // Draw prompt with beveled style
+    // Draw prompt with pulsing glow
     if (d.promptVisible) {
         const blink = Math.floor(d.promptBlink / 20) % 2 === 0;
+        const pulse = 1 + Math.sin(d.promptBlink * 0.1) * 0.05;
+        
         if (blink) {
-            drawBeveledText(ctx, prompt, centerX, centerY + 90, 24, '#1e3a5f', '#fff');
-            drawBeveledText(ctx, '[ Press X ]', centerX, centerY + 125, 14, '#92400e', '#fbbf24');
+            ctx.font = `bold ${Math.floor(26 * pulse)}px "Press Start 2P", monospace`;
+            ctx.textAlign = 'center';
+            ctx.shadowColor = '#4af';
+            ctx.shadowBlur = 15;
+            ctx.fillStyle = '#fff';
+            ctx.fillText(prompt, centerX, centerY + 95);
+            
+            ctx.font = '14px "Press Start 2P", monospace';
+            ctx.shadowColor = '#fa0';
+            ctx.shadowBlur = 10;
+            ctx.fillStyle = '#fbbf24';
+            ctx.fillText('[ Press X ]', centerX, centerY + 128);
         }
     }
 }
