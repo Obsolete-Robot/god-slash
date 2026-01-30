@@ -140,6 +140,7 @@ const ASSETS = {
     loaded: false,
     bgVideos: {},      // Map of level index to video element
     activeBgIndex: 0,  // Which video to draw
+    titleVideo: null,  // Title screen video
     tiles: null,
     player: null,
     enemies: [],
@@ -156,7 +157,7 @@ const BG_VIDEO_SOURCES = {
 function loadAssets() {
     let loadCount = 0;
     const uniqueVideos = [...new Set(Object.values(BG_VIDEO_SOURCES))];
-    const totalAssets = 4 + uniqueVideos.length; // unique videos + tiles + player + 3 enemies
+    const totalAssets = 5 + uniqueVideos.length; // unique videos + title video + tiles + player + 3 enemies
     
     function onLoad() {
         loadCount++;
@@ -167,8 +168,35 @@ function loadAssets() {
             Object.values(ASSETS.bgVideos).forEach(v => {
                 v.play().catch(() => {});
             });
+            // Start title video
+            if (ASSETS.titleVideo) {
+                ASSETS.titleVideo.play().catch(() => {});
+            }
         }
     }
+    
+    // Load title screen video
+    const titleVideo = document.createElement('video');
+    titleVideo.src = 'assets/title-video.mp4';
+    titleVideo.loop = true;
+    titleVideo.muted = true;
+    titleVideo.playsInline = true;
+    titleVideo.preload = 'auto';
+    titleVideo.autoplay = true;
+    titleVideo.addEventListener('canplaythrough', () => {
+        if (!titleVideo._loaded) {
+            titleVideo._loaded = true;
+            onLoad();
+        }
+    }, { once: false });
+    titleVideo.addEventListener('error', () => {
+        if (!titleVideo._loaded) {
+            titleVideo._loaded = true;
+            onLoad();
+        }
+    }, { once: true });
+    titleVideo.load();
+    ASSETS.titleVideo = titleVideo;
     
     // Create video elements for each unique source
     const videoCache = {}; // Cache to reuse same video for duplicate sources
@@ -1051,6 +1079,12 @@ function clearJustPressed() {
 // =============================================================================
 
 const state = {
+    // Title screen state
+    titleScreen: true,
+    titleTransition: false,
+    titleTransitionTimer: 0,
+    titleFlashAlpha: 0,
+    
     players: [],
     bullets: [],
     particles: [],
@@ -2887,6 +2921,121 @@ function drawDebug(ctx) {
 }
 
 // =============================================================================
+// TITLE SCREEN SYSTEM
+// =============================================================================
+
+function updateTitleScreen() {
+    if (!state.titleScreen) return;
+    
+    // Handle transition
+    if (state.titleTransition) {
+        state.titleTransitionTimer++;
+        
+        // Flash to white then fade
+        if (state.titleTransitionTimer < 15) {
+            state.titleFlashAlpha = state.titleTransitionTimer / 15;
+        } else if (state.titleTransitionTimer < 30) {
+            state.titleFlashAlpha = 1;
+        } else if (state.titleTransitionTimer < 50) {
+            state.titleFlashAlpha = 1 - (state.titleTransitionTimer - 30) / 20;
+        } else {
+            // Transition complete - start the game
+            state.titleScreen = false;
+            state.titleTransition = false;
+            state.titleFlashAlpha = 0;
+            startMatchIntro();
+        }
+        return;
+    }
+    
+    // Check for X key to start
+    if (keysJustPressed['KeyX'] || keysJustPressed['KeyK']) {
+        state.titleTransition = true;
+        state.titleTransitionTimer = 0;
+        playConfirmSound();
+        // Initialize audio on first interaction
+        if (!AUDIO.initialized) initAudio();
+    }
+}
+
+function drawTitleScreen(ctx) {
+    if (!state.titleScreen) return;
+    
+    // Draw title video background
+    const video = ASSETS.titleVideo;
+    if (video && video.readyState >= 2) {
+        if (video.paused) video.play().catch(() => {});
+        
+        // Scale video to fill canvas while maintaining aspect ratio
+        const videoAspect = video.videoWidth / video.videoHeight;
+        const canvasAspect = CONFIG.WIDTH / CONFIG.HEIGHT;
+        
+        let drawWidth, drawHeight, drawX, drawY;
+        if (videoAspect > canvasAspect) {
+            drawHeight = CONFIG.HEIGHT;
+            drawWidth = drawHeight * videoAspect;
+            drawX = (CONFIG.WIDTH - drawWidth) / 2;
+            drawY = 0;
+        } else {
+            drawWidth = CONFIG.WIDTH;
+            drawHeight = drawWidth / videoAspect;
+            drawX = 0;
+            drawY = (CONFIG.HEIGHT - drawHeight) / 2;
+        }
+        
+        ctx.drawImage(video, drawX, drawY, drawWidth, drawHeight);
+    } else {
+        // Fallback dark background
+        ctx.fillStyle = '#0a0a1a';
+        ctx.fillRect(0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
+    }
+    
+    // Slight darken overlay at bottom for text readability
+    const gradient = ctx.createLinearGradient(0, CONFIG.HEIGHT * 0.5, 0, CONFIG.HEIGHT);
+    gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0.5)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
+    
+    // "Press Start" text with pulsing glow
+    const pulse = 1 + Math.sin(Date.now() * 0.004) * 0.08;
+    const textY = CONFIG.HEIGHT - 100;
+    
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    // Outer glow
+    ctx.font = `bold ${Math.floor(32 * pulse)}px "Press Start 2P", monospace`;
+    ctx.shadowColor = '#4af';
+    ctx.shadowBlur = 25;
+    ctx.fillStyle = '#fff';
+    ctx.fillText('Press Start', CONFIG.WIDTH / 2, textY);
+    
+    // Sharper layer
+    ctx.shadowBlur = 10;
+    ctx.fillText('Press Start', CONFIG.WIDTH / 2, textY);
+    
+    // "X" button indicator with blinking
+    const blink = Math.floor(Date.now() / 400) % 2 === 0;
+    if (blink) {
+        ctx.font = 'bold 20px "Press Start 2P", monospace';
+        ctx.shadowColor = '#fbbf24';
+        ctx.shadowBlur = 15;
+        ctx.fillStyle = '#fbbf24';
+        ctx.fillText('[ X ]', CONFIG.WIDTH / 2, textY + 45);
+    }
+    
+    ctx.restore();
+    
+    // White flash overlay during transition
+    if (state.titleFlashAlpha > 0) {
+        ctx.fillStyle = `rgba(255, 255, 255, ${state.titleFlashAlpha})`;
+        ctx.fillRect(0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
+    }
+}
+
+// =============================================================================
 // MATCH INTRO SYSTEM
 // =============================================================================
 
@@ -3725,10 +3874,17 @@ function init() {
     }
     
     updateUI();
-    startMatchIntro();
+    // Game starts on title screen - match intro starts when player presses X
 }
 
 function update() {
+    // Title screen
+    if (state.titleScreen) {
+        updateTitleScreen();
+        clearJustPressed();
+        return;
+    }
+    
     // Update match intro
     if (state.introActive) {
         updateIntro();
@@ -3845,6 +4001,13 @@ function update() {
 
 function draw() {
     ctx.save();
+    
+    // Title screen
+    if (state.titleScreen) {
+        drawTitleScreen(ctx);
+        ctx.restore();
+        return;
+    }
     
     // Screen shake
     if (state.screenShake > 0.5) {
