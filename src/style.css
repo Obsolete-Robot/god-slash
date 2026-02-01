@@ -22,7 +22,11 @@ body {
     background: #1a1a2e;
     image-rendering: pixelated;
     image-rendering: crisp-edges;
-    /* Positioning handled by JS resizeCanvas() */
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    /* Size set by JS resizeCanvas() */
 }
 
 #ui {

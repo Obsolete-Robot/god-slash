@@ -4337,7 +4337,7 @@ const ctx = canvas.getContext('2d');
 canvas.width = CONFIG.WIDTH;
 canvas.height = CONFIG.HEIGHT;
 
-// Handle canvas scaling to fit screen while maintaining aspect ratio
+// Handle canvas scaling to fill screen while maintaining aspect ratio
 function resizeCanvas() {
     const gameAspect = CONFIG.WIDTH / CONFIG.HEIGHT;
     const windowAspect = window.innerWidth / window.innerHeight;
@@ -4345,20 +4345,17 @@ function resizeCanvas() {
     let width, height;
     
     if (windowAspect > gameAspect) {
-        // Window is wider than game - fit to height
+        // Window is wider than game - fit to height, fill vertically
         height = window.innerHeight;
         width = height * gameAspect;
     } else {
-        // Window is taller than game - fit to width
+        // Window is taller than game - fit to width, fill horizontally
         width = window.innerWidth;
         height = width / gameAspect;
     }
     
-    canvas.style.width = width + 'px';
-    canvas.style.height = height + 'px';
-    canvas.style.position = 'absolute';
-    canvas.style.left = ((window.innerWidth - width) / 2) + 'px';
-    canvas.style.top = ((window.innerHeight - height) / 2) + 'px';
+    canvas.style.width = Math.floor(width) + 'px';
+    canvas.style.height = Math.floor(height) + 'px';
 }
 
 // Initial resize and listen for window changes
