@@ -4337,6 +4337,37 @@ const ctx = canvas.getContext('2d');
 canvas.width = CONFIG.WIDTH;
 canvas.height = CONFIG.HEIGHT;
 
+// Handle canvas scaling to fit screen while maintaining aspect ratio
+function resizeCanvas() {
+    const gameAspect = CONFIG.WIDTH / CONFIG.HEIGHT;
+    const windowAspect = window.innerWidth / window.innerHeight;
+    
+    let width, height;
+    
+    if (windowAspect > gameAspect) {
+        // Window is wider than game - fit to height
+        height = window.innerHeight;
+        width = height * gameAspect;
+    } else {
+        // Window is taller than game - fit to width
+        width = window.innerWidth;
+        height = width / gameAspect;
+    }
+    
+    canvas.style.width = width + 'px';
+    canvas.style.height = height + 'px';
+    canvas.style.position = 'absolute';
+    canvas.style.left = ((window.innerWidth - width) / 2) + 'px';
+    canvas.style.top = ((window.innerHeight - height) / 2) + 'px';
+}
+
+// Initial resize and listen for window changes
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+window.addEventListener('orientationchange', () => {
+    setTimeout(resizeCanvas, 100); // Delay for orientation to settle
+});
+
 function init() {
     // Load sprite assets
     loadAssets();
@@ -4585,16 +4616,30 @@ function draw() {
     ctx.restore();
 }
 
-let frameAccumulator = 0;
+// Frame rate independent timing
+const FIXED_TIMESTEP = 1000 / 60; // Target 60 FPS (16.67ms per frame)
+let lastTime = 0;
+let accumulator = 0;
 
-function gameLoop() {
-    // Accumulate based on time scale
-    frameAccumulator += state.timeScale;
+function gameLoop(currentTime) {
+    // Calculate delta time in milliseconds
+    if (lastTime === 0) lastTime = currentTime;
+    let deltaTime = currentTime - lastTime;
+    lastTime = currentTime;
     
-    // Run updates for accumulated frames
-    while (frameAccumulator >= 1) {
+    // Cap delta time to prevent spiral of death (e.g., if tab was inactive)
+    if (deltaTime > 100) deltaTime = 100;
+    
+    // Apply time scale for slow-motion effects
+    deltaTime *= state.timeScale;
+    
+    // Accumulate time
+    accumulator += deltaTime;
+    
+    // Run fixed timestep updates
+    while (accumulator >= FIXED_TIMESTEP) {
         update();
-        frameAccumulator -= 1;
+        accumulator -= FIXED_TIMESTEP;
     }
     
     // Always draw
@@ -4614,4 +4659,4 @@ function gameLoop() {
 }
 
 init();
-gameLoop();
+requestAnimationFrame(gameLoop);
