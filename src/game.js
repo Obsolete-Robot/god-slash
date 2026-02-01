@@ -1509,8 +1509,13 @@ function createStage(levelIndex) {
     } else {
         // Use shuffle pool - never repeat until all 4 levels played
         if (state.levelPool.length === 0) {
-            // Refill pool with all level indices
+            // Refill pool with all level indices, shuffled
             state.levelPool = [0, 1, 2, 3];
+            // Fisher-Yates shuffle for true randomness
+            for (let i = state.levelPool.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [state.levelPool[i], state.levelPool[j]] = [state.levelPool[j], state.levelPool[i]];
+            }
         }
         
         // Pick random level from pool
