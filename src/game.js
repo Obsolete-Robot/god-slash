@@ -997,6 +997,7 @@ window.addEventListener('keyup', e => keys[e.code] = false);
 
 const gamepad = {
     connected: false,
+    index: -1,
     // Current frame state
     left: false,
     right: false,
@@ -1014,8 +1015,23 @@ const gamepad = {
     slashPressed: false,
     dashPressed: false,
     // Deadzone for analog sticks
-    deadzone: 0.3,
+    deadzone: 0.25,
 };
+
+// Listen for gamepad connection events
+window.addEventListener('gamepadconnected', (e) => {
+    console.log('🎮 Gamepad connected:', e.gamepad.id, 'index:', e.gamepad.index);
+    gamepad.index = e.gamepad.index;
+    gamepad.connected = true;
+});
+
+window.addEventListener('gamepaddisconnected', (e) => {
+    console.log('🎮 Gamepad disconnected:', e.gamepad.id);
+    if (e.gamepad.index === gamepad.index) {
+        gamepad.connected = false;
+        gamepad.index = -1;
+    }
+});
 
 function updateGamepad() {
     const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
@@ -1031,6 +1047,10 @@ function updateGamepad() {
     
     if (!gp) {
         gamepad.connected = false;
+        // Reset all inputs when no gamepad
+        gamepad.left = gamepad.right = gamepad.up = gamepad.down = false;
+        gamepad.jump = gamepad.slash = gamepad.dash = false;
+        gamepad.jumpPressed = gamepad.slashPressed = gamepad.dashPressed = false;
         return;
     }
     
@@ -1067,13 +1087,175 @@ function updateGamepad() {
     // 4 = L1/LB, 5 = R1/RB, 6 = L2/LT, 7 = R2/RT
     gamepad.jump = gp.buttons[0]?.pressed || gp.buttons[1]?.pressed || false;  // A or B
     gamepad.slash = gp.buttons[2]?.pressed || gp.buttons[3]?.pressed || false; // X or Y
-    gamepad.dash = gp.buttons[4]?.pressed || gp.buttons[5]?.pressed ||         // L1/R1
-                   gp.buttons[6]?.pressed || gp.buttons[7]?.pressed || false;  // L2/R2
+    gamepad.dash = gp.buttons[4]?.pressed || gp.buttons[5]?.pressed ||         // LB/RB
+                   (gp.buttons[6]?.value > 0.5) || (gp.buttons[7]?.value > 0.5) || false;  // LT/RT (analog triggers)
     
     // Detect just pressed (rising edge)
     gamepad.jumpPressed = gamepad.jump && !gamepad.prevJump;
     gamepad.slashPressed = gamepad.slash && !gamepad.prevSlash;
     gamepad.dashPressed = gamepad.dash && !gamepad.prevDash;
+}
+
+// =============================================================================
+// TOUCH CONTROLS (Mobile)
+// =============================================================================
+
+const touch = {
+    enabled: false,
+    // D-pad state
+    left: false,
+    right: false,
+    up: false,
+    down: false,
+    // Button state
+    jump: false,
+    slash: false,
+    dash: false,
+    // Previous frame state
+    prevJump: false,
+    prevSlash: false,
+    prevDash: false,
+    // Just pressed
+    jumpPressed: false,
+    slashPressed: false,
+    dashPressed: false,
+    // Track active touches on each element
+    activeTouches: {},
+};
+
+function detectMobile() {
+    // Check for touch support and mobile indicators
+    const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const isCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
+    
+    return hasTouch && (isMobileUA || isCoarsePointer);
+}
+
+function initTouchControls() {
+    if (!detectMobile()) {
+        console.log('Desktop detected, touch controls disabled');
+        return;
+    }
+    
+    console.log('📱 Mobile detected, enabling touch controls');
+    touch.enabled = true;
+    
+    // Show touch controls
+    const touchControls = document.getElementById('touch-controls');
+    if (touchControls) {
+        touchControls.classList.remove('hidden');
+    }
+    
+    // Setup D-pad touch handlers
+    const dpadBtns = document.querySelectorAll('.dpad-btn');
+    dpadBtns.forEach(btn => {
+        btn.addEventListener('touchstart', handleDpadTouch, { passive: false });
+        btn.addEventListener('touchend', handleDpadTouch, { passive: false });
+        btn.addEventListener('touchcancel', handleDpadTouch, { passive: false });
+    });
+    
+    // Setup action button touch handlers
+    const actionBtns = document.querySelectorAll('.action-btn');
+    actionBtns.forEach(btn => {
+        btn.addEventListener('touchstart', handleActionTouch, { passive: false });
+        btn.addEventListener('touchend', handleActionTouch, { passive: false });
+        btn.addEventListener('touchcancel', handleActionTouch, { passive: false });
+    });
+    
+    // Setup canvas tap for title screen
+    const canvas = document.getElementById('game');
+    if (canvas) {
+        canvas.addEventListener('touchstart', handleCanvasTouch, { passive: false });
+    }
+    
+    // Prevent default touch behaviors that interfere with game
+    document.body.addEventListener('touchmove', (e) => {
+        if (touch.enabled) e.preventDefault();
+    }, { passive: false });
+}
+
+function handleDpadTouch(e) {
+    e.preventDefault();
+    
+    const btn = e.currentTarget;
+    const dir = btn.dataset.dir;
+    const isPressed = e.type === 'touchstart';
+    
+    // Visual feedback
+    if (isPressed) {
+        btn.classList.add('active');
+    } else {
+        btn.classList.remove('active');
+    }
+    
+    // Update touch state
+    switch (dir) {
+        case 'up': touch.up = isPressed; break;
+        case 'down': touch.down = isPressed; break;
+        case 'left': touch.left = isPressed; break;
+        case 'right': touch.right = isPressed; break;
+    }
+    
+    // Initialize audio on first touch
+    if (!AUDIO.initialized && isPressed) initAudio();
+}
+
+function handleActionTouch(e) {
+    e.preventDefault();
+    
+    const btn = e.currentTarget;
+    const action = btn.dataset.action;
+    const isPressed = e.type === 'touchstart';
+    
+    // Visual feedback
+    if (isPressed) {
+        btn.classList.add('active');
+    } else {
+        btn.classList.remove('active');
+    }
+    
+    // Update touch state
+    switch (action) {
+        case 'jump': touch.jump = isPressed; break;
+        case 'slash': touch.slash = isPressed; break;
+        case 'dash': touch.dash = isPressed; break;
+    }
+    
+    // Initialize audio on first touch
+    if (!AUDIO.initialized && isPressed) initAudio();
+}
+
+function handleCanvasTouch(e) {
+    // Allow canvas tap to work like a button press for title screen
+    if (state.titleScreen && !state.titleTransition) {
+        e.preventDefault();
+        // Simulate X key press
+        keysJustPressed['KeyX'] = true;
+        if (!AUDIO.initialized) initAudio();
+    }
+}
+
+function updateTouch() {
+    if (!touch.enabled) return;
+    
+    // Store previous state
+    touch.prevJump = touch.jumpPressed ? false : touch.prevJump;
+    touch.prevSlash = touch.slashPressed ? false : touch.prevSlash;
+    touch.prevDash = touch.dashPressed ? false : touch.prevDash;
+    
+    // Detect just pressed (rising edge)
+    const wasJump = touch.prevJump;
+    const wasSlash = touch.prevSlash;
+    const wasDash = touch.prevDash;
+    
+    touch.jumpPressed = touch.jump && !wasJump;
+    touch.slashPressed = touch.slash && !wasSlash;
+    touch.dashPressed = touch.dash && !wasDash;
+    
+    touch.prevJump = touch.jump;
+    touch.prevSlash = touch.slash;
+    touch.prevDash = touch.dash;
 }
 
 // =============================================================================
@@ -1529,9 +1711,9 @@ class Player {
             const accel = this.grounded ? CONFIG.PLAYER_ACCEL : CONFIG.PLAYER_AIR_ACCEL;
             const decel = this.grounded ? CONFIG.PLAYER_DECEL : CONFIG.PLAYER_AIR_DECEL;
             
-            // Check keyboard OR gamepad
-            const moveLeft = keys['ArrowLeft'] || keys['KeyA'] || gamepad.left;
-            const moveRight = keys['ArrowRight'] || keys['KeyD'] || gamepad.right;
+            // Check keyboard OR gamepad OR touch
+            const moveLeft = keys['ArrowLeft'] || keys['KeyA'] || gamepad.left || touch.left;
+            const moveRight = keys['ArrowRight'] || keys['KeyD'] || gamepad.right || touch.right;
             
             if (moveLeft && !moveRight) {
                 // Accelerate left
@@ -1550,9 +1732,9 @@ class Player {
             }
         }
         
-        // Jump (X key or gamepad A/B)
-        if (keysJustPressed['KeyX'] || keysJustPressed['KeyK'] || gamepad.jumpPressed) {
-            const holdingDown = keys['ArrowDown'] || keys['KeyS'] || gamepad.down;
+        // Jump (X key or gamepad A/B or touch)
+        if (keysJustPressed['KeyX'] || keysJustPressed['KeyK'] || gamepad.jumpPressed || touch.jumpPressed) {
+            const holdingDown = keys['ArrowDown'] || keys['KeyS'] || gamepad.down || touch.down;
             
             if (this.grounded && holdingDown) {
                 // Drop through platform
@@ -1571,18 +1753,18 @@ class Player {
             }
         }
         
-        // Dash (Shift or gamepad triggers/bumpers)
-        if ((keysJustPressed['ShiftLeft'] || keysJustPressed['ShiftRight'] || gamepad.dashPressed) && this.dashCooldown <= 0) {
+        // Dash (Shift or gamepad triggers/bumpers or touch)
+        if ((keysJustPressed['ShiftLeft'] || keysJustPressed['ShiftRight'] || gamepad.dashPressed || touch.dashPressed) && this.dashCooldown <= 0) {
             this.dash();
         }
         
-        // Sword slash (Z key or gamepad X/Y) - 4 directional based on arrow keys (not while dashing)
-        if ((keysJustPressed['KeyZ'] || keysJustPressed['KeyJ'] || gamepad.slashPressed) && this.slashCooldown <= 0 && !this.dashing) {
-            // Determine slash direction from arrow keys or gamepad
-            const up = keys['ArrowUp'] || keys['KeyW'] || gamepad.up;
-            const down = keys['ArrowDown'] || keys['KeyS'] || gamepad.down;
-            const left = keys['ArrowLeft'] || keys['KeyA'] || gamepad.left;
-            const right = keys['ArrowRight'] || keys['KeyD'] || gamepad.right;
+        // Sword slash (Z key or gamepad X/Y or touch) - 4 directional based on arrows (not while dashing)
+        if ((keysJustPressed['KeyZ'] || keysJustPressed['KeyJ'] || gamepad.slashPressed || touch.slashPressed) && this.slashCooldown <= 0 && !this.dashing) {
+            // Determine slash direction from arrow keys, gamepad, or touch
+            const up = keys['ArrowUp'] || keys['KeyW'] || gamepad.up || touch.up;
+            const down = keys['ArrowDown'] || keys['KeyS'] || gamepad.down || touch.down;
+            const left = keys['ArrowLeft'] || keys['KeyA'] || gamepad.left || touch.left;
+            const right = keys['ArrowRight'] || keys['KeyD'] || gamepad.right || touch.right;
             
             if (up && !down) {
                 this.slashDir = { x: 0, y: -1 };
@@ -3224,8 +3406,8 @@ function updateTitleScreen() {
         return;
     }
     
-    // Check for X key or gamepad to start
-    if (keysJustPressed['KeyX'] || keysJustPressed['KeyK'] || gamepad.jumpPressed || gamepad.slashPressed) {
+    // Check for X key, gamepad, or touch to start
+    if (keysJustPressed['KeyX'] || keysJustPressed['KeyK'] || gamepad.jumpPressed || gamepad.slashPressed || touch.jumpPressed || touch.slashPressed) {
         state.titleTransition = true;
         state.titleTransitionTimer = 0;
         playConfirmSound();
@@ -3653,8 +3835,8 @@ function updateOutro() {
     const d = state.outroData;
     const type = state.outroType;
     
-    // Handle X key or gamepad press
-    if (d.promptVisible && (keysJustPressed['KeyX'] || keysJustPressed['KeyK'] || gamepad.jumpPressed || gamepad.slashPressed)) {
+    // Handle X key, gamepad, or touch press
+    if (d.promptVisible && (keysJustPressed['KeyX'] || keysJustPressed['KeyK'] || gamepad.jumpPressed || gamepad.slashPressed || touch.jumpPressed || touch.slashPressed)) {
         playConfirmSound();
         state.outroActive = false;
         state.outroPhase = 'none';
@@ -4165,6 +4347,9 @@ function init() {
     // Setup debug panel
     setupDebugPanel();
     
+    // Setup touch controls for mobile
+    initTouchControls();
+    
     // Create first stage (random)
     createStage();
     
@@ -4192,6 +4377,9 @@ function init() {
 function update() {
     // Poll gamepad every frame
     updateGamepad();
+    
+    // Update touch controls
+    updateTouch();
     
     // Title screen
     if (state.titleScreen) {
