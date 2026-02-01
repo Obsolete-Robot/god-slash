@@ -419,10 +419,10 @@ canvas {
     background: rgba(255, 255, 255, 0.15);
 }
 
-/* Jump on top (like D-pad up) */
+/* Jump on bottom (like D-pad down) */
 #btn-jump {
     grid-column: 2;
-    grid-row: 1;
+    grid-row: 3;
     border-color: rgba(100, 200, 255, 0.5);
     color: rgba(100, 200, 255, 0.5);
 }
@@ -433,23 +433,9 @@ canvas {
     background: rgba(100, 200, 255, 0.2);
 }
 
-/* Dash on left (like D-pad left) */
-#btn-dash {
-    grid-column: 1;
-    grid-row: 2;
-    border-color: rgba(255, 200, 100, 0.5);
-    color: rgba(255, 200, 100, 0.5);
-}
-
-#btn-dash.active {
-    border-color: rgba(255, 200, 100, 1);
-    color: rgba(255, 200, 100, 1);
-    background: rgba(255, 200, 100, 0.2);
-}
-
-/* Slash on right (like D-pad right) */
+/* Slash on left (like D-pad left) */
 #btn-slash {
-    grid-column: 3;
+    grid-column: 1;
     grid-row: 2;
     border-color: rgba(255, 100, 100, 0.5);
     color: rgba(255, 100, 100, 0.5);
@@ -459,6 +445,20 @@ canvas {
     border-color: rgba(255, 100, 100, 1);
     color: rgba(255, 100, 100, 1);
     background: rgba(255, 100, 100, 0.2);
+}
+
+/* Dash on right (like D-pad right) */
+#btn-dash {
+    grid-column: 3;
+    grid-row: 2;
+    border-color: rgba(255, 200, 100, 0.5);
+    color: rgba(255, 200, 100, 0.5);
+}
+
+#btn-dash.active {
+    border-color: rgba(255, 200, 100, 1);
+    color: rgba(255, 200, 100, 1);
+    background: rgba(255, 200, 100, 0.2);
 }
 
 /* Hide audio controls on mobile to make room */
