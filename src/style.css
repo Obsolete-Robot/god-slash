@@ -19,10 +19,10 @@ body {
 
 #game {
     display: block;
-    margin: 0 auto;
     background: #1a1a2e;
     image-rendering: pixelated;
     image-rendering: crisp-edges;
+    /* Positioning handled by JS resizeCanvas() */
 }
 
 #ui {
