@@ -1379,6 +1379,7 @@ const state = {
     platforms: [],
     currentLevel: '',
     currentLevelIndex: 0,
+    levelPool: [],  // Shuffle pool - levels available to pick from
     verticalWrap: false,
     screenShake: 0,
     timeScale: 1.0, // 1.0 = normal speed
@@ -1500,8 +1501,26 @@ function createStage(levelIndex) {
     const W = CONFIG.WIDTH;
     const H = CONFIG.HEIGHT;
     
-    // Use specified level or random
-    const idx = levelIndex !== undefined ? levelIndex : Math.floor(Math.random() * LEVELS.length);
+    let idx;
+    
+    if (levelIndex !== undefined) {
+        // Use specified level
+        idx = levelIndex;
+    } else {
+        // Use shuffle pool - never repeat until all 4 levels played
+        if (state.levelPool.length === 0) {
+            // Refill pool with all level indices
+            state.levelPool = [0, 1, 2, 3];
+        }
+        
+        // Pick random level from pool
+        const poolIndex = Math.floor(Math.random() * state.levelPool.length);
+        idx = state.levelPool[poolIndex];
+        
+        // Remove from pool
+        state.levelPool.splice(poolIndex, 1);
+    }
+    
     const level = LEVELS[idx];
     state.currentLevel = level.name;
     state.currentLevelIndex = idx;
