@@ -3420,6 +3420,13 @@ function updateTitleScreen() {
             state.titleScreen = false;
             state.titleTransition = false;
             state.titleFlashAlpha = 0;
+            
+            // Pick a new stage (uses shuffle pool)
+            createStage();
+            
+            // Reset all players for new game
+            resetAllPlayers();
+            
             startMatchIntro();
         }
         return;
@@ -4315,6 +4322,32 @@ function spawnLargeBloodBall(x, y) {
     });
 }
 
+function resetAllPlayers() {
+    // Reset all lives and respawn everyone
+    for (const p of state.players) {
+        p.lives = CONFIG.LIVES_PER_CHARACTER;
+        p.alive = true;
+        p.dying = false;
+        p.x = p.spawnX;
+        p.y = p.spawnY;
+        p.vx = 0;
+        p.vy = 0;
+        p.invulnTimer = 0;
+        p.stunned = false;
+        p.dashing = false;
+        p.slashing = false;
+    }
+    
+    // Clear effects
+    state.particles = [];
+    state.bloodBalls = [];
+    state.dashEchoes = [];
+    state.slashEffects = [];
+    state.spawnTelegraphs = [];
+    
+    updateUI();
+}
+
 function resetMatch() {
     // Clear game over and final hit flags
     state.gameOverPending = false;
@@ -4326,21 +4359,10 @@ function resetMatch() {
     // Select random level
     createStage();
     
-    // Reset all lives and respawn everyone
-    for (const p of state.players) {
-        p.lives = CONFIG.LIVES_PER_CHARACTER;
-        p.alive = true;
-        p.x = p.spawnX;
-        p.y = p.spawnY;
-        p.vx = 0;
-        p.vy = 0;
-    }
+    // Reset all players
+    resetAllPlayers();
+    
     state.bullets = [];
-    state.particles = [];
-    state.slashEffects = [];
-    state.bloodBalls = [];
-    state.dashEchoes = [];
-    state.spawnTelegraphs = [];
     updateUI();
     hideMessage();
     startMatchIntro();
